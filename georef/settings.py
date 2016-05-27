@@ -40,7 +40,6 @@ INSTALLED_APPS = [
     'website',
     'leaflet',
     'npm',
-    #'djangobower',
 ]
 
 MIDDLEWARE_CLASSES = [
@@ -134,15 +133,3 @@ STATICFILES_FINDERS = (
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
     'npm.finders.NpmFinder'
 )
-
-# Django-bower
-'''STATICFILES_FINDERS = (
-    'django.contrib.staticfiles.finders.FileSystemFinder',
-    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
-    'djangobower.finders.BowerFinder'
-)
-BOWER_INSTALLED_APPS = (
-    'bootstrap',
-    'handsontable',
-)
-BOWER_COMPONENTS_ROOT = os.path.join(BASE_DIR)'''

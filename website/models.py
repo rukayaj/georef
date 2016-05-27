@@ -18,7 +18,6 @@ from django.dispatch import receiver
 class Location(models.Model):
     point = models.PointField(help_text='', null=True, blank=True)
     polygon = models.PolygonField(help_text='', null=True, blank=True)
-    objects = models.GeoManager()
     TOWN = 'T'
     MOUNTAIN = 'M'
     RAILWAY = 'R'
