@@ -1,0 +1,23 @@
+{% extends "website/_base.html" %}
+{% load static %}
+
+{% block css %}
+<link rel="stylesheet" media="screen" href="{% static 'handsontable/dist/handsontable.full.css' %}">
+{% endblock css %}
+
+{% block content %}
+<h1>Georeferencing @ SANBI</h1>
+<div id="hot"></div>
+<hr>
+<form action="{% url 'process' %}" method="post" id="process" role="form">{% csrf_token %}
+  <input type="hidden" name="data" id="data">
+  <button class="btn btn-primary" data-redirect="" type="submit">Process entries</button>
+</form>
+{% endblock content %}
+
+{% block js %}
+<script src="{% static 'handsontable/dist/handsontable.full.js' %}"></script>
+<script src="{% static 'hot_uploader.js' %}"></script>
+<script>
+</script>
+{% endblock js %}

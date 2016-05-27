@@ -60,3 +60,20 @@ target/
 
 #Ipython Notebook
 .ipynb_checkpoints
+
+*.pyc
+.idea
+.idea/*
+
+tmp
+tmp/*
+=======
+.DS_Store
+*~
+
+# Production settings
+eia/settings_production.py
+
+# File uploads
+document_uploads
+document_uploads/*

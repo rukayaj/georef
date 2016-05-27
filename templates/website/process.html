@@ -1,0 +1,108 @@
+{% extends "website/_base.html" %}
+{% load static %}
+
+{% block css %}
+<!--<link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet/v0.7.7/leaflet.css" />-->
+<link rel="stylesheet" href="{% static 'leaflet.css' %}">
+{% endblock css %}
+
+{% block content %}
+<h1>Georeferencing @ SANBI</h1>
+<div id="leaflet" style="height: 400px"></div>
+<hr>
+
+<!-- Table of data being georeferenced -->
+<table class="table table-striped">
+  <thead><tr>
+    <th>#</th>
+    <th>Collected</th>
+    <th>Collector</th>
+    <th>Place</th>
+    <th>&nbsp;</th>
+  </tr></thead>
+  <tbody>
+  {% for row in data %}
+    <tr>
+      <td>{{ row.brahms }}</td>
+      <td>{{ row.collected }}</td>
+      <td>{{ row.collector_number }}</td>
+      <td>{{ row.locality }}</td>
+      <td>
+        <button class="btn btn-primary btn-process" data-locations='{{ row.georeference.locality_parts.georeferenced }}'
+                {% if row.original_point %}
+                data-original-point="{{ row.original_point }}"
+                {% endif %}>Process</button>
+      </td>
+    </tr>
+  {% endfor %}
+
+  </tbody>
+</table>
+{% endblock content %}
+
+{% block js %}
+<script src="http://cdn.leafletjs.com/leaflet/v0.7.7/leaflet.js"></script>
+<script>
+$(document).ready(function() {
+  // Initialise map
+  map = L.map('leaflet').setView([-29, 24.5], 5);
+  L.tileLayer('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: 'Map data &copy; 2013 OpenStreetMap contributors',
+  }).addTo(map);
+
+  $('.btn-process').click(function(event) {
+    // Each time we click the button remove the previous layer (if there was one)
+    if(typeof geojsonLayer != 'undefined') {
+      map.removeLayer(geojsonLayer);
+    }
+
+    // Get the main set of georeferenced points and add to geojson layer
+    georeferences = $.parseJSON($(this).attr('data-locations'));
+
+    // Make it a list because we may add original point to it (see below)
+    georeferences = [georeferences];
+
+    // If there's an original point passed in from the HoT we need to add it too
+    if($(this).attr('data-original-point')) {
+      original_point = $.parseJSON($(this).attr('data-original-point'));
+      georeferences.push(original_point);
+    }
+
+    // Create a geojson layer, see https://www.dartdocs.org/documentation/leaflet/0.0.1-alpha.4/leaflet.layer/GeoJSON/addData.html
+    geojsonLayer = L.geoJson(georeferences, {
+      pointToLayer: function(feature, latlng) {
+          return new L.CircleMarker(latlng, {radius: 10, fillOpacity: 0.85});
+      },
+      onEachFeature: function (feature, layer) {
+        layer.bindPopup('hello');
+      }
+    });
+
+    // Add the layer to the map and zoom to it
+    map.addLayer(geojsonLayer);
+    map.fitBounds(geojsonLayer, {padding: [80, 80]});
+  });
+
+
+  /*L.timeLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token={accessToken}', {
+      attribution: 'Map data &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors, <a href="http://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="http://mapbox.com">Mapbox</a>',
+      maxZoom: 18,
+      id: 'your.mapbox.project.id',
+      accessToken: 'pk.eyJ1IjoicnVrYXlhIiwiYSI6ImNpb280aHV1OTAwMTJ2d2ttMWE5b3ExdjUifQ.rgOgpoTwMzfOQDU3gdY4lA'
+  }).addTo(mymap);*/
+
+
+
+
+        /*
+  L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token={accessToken}', {
+      attribution: 'Map data &copy; <a href="http://openstreetmap.org">OpenStreetMap</a> contributors, <a href="http://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, Imagery © <a href="http://mapbox.com">Mapbox</a>',
+      maxZoom: 18,
+      id: 'your.mapbox.project.id',
+      accessToken: 'your.mapbox.public.access.token'
+  }).addTo(mymap);*/
+
+
+});
+</script>
+{% endblock js %}
