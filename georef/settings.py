@@ -133,3 +133,9 @@ STATICFILES_FINDERS = (
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
     'npm.finders.NpmFinder'
 )
+
+# Need to modify the geojson serializer slightly so it shows the verbose 'display' version of choice fields
+# See http://stackoverflow.com/questions/34556679/geodjango-serialize-geojson-skipping-id-field
+SERIALIZATION_MODULES = {
+    "custom_geojson": "website.geojson_serializer",
+}

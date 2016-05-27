@@ -5,6 +5,7 @@ import pandas as pd
 import datetime
 from website import models
 from django.contrib.gis.geos import Point
+from django.core.serializers import serialize
 
 input_columns = ['brahms', 'collector_number', 'collected_day', 'collected_month', 'collected_year', 'latdec', 'longdec', 'llres', 'locality']
 
@@ -28,10 +29,22 @@ def process(request):
 
     # Get the input point data where we have it
     df['original_point'] = False
-    df.loc[pd.notnull(df['latdec']) & pd.notnull(df['longdec']), 'original_point'] = df.apply(lambda x: Point(x['longdec'], x['latdec']).json, axis=1)
+    llres_mapping = {
+        '1/4dg': 500,
+        '5k': 5000,
+        '2k': 2000,
+        '100m': 100
+    }
+    df.loc[pd.notnull(df['latdec']) & pd.notnull(df['longdec']), 'original_point'] = \
+        df.apply(lambda x:  serialize('custom_geojson',
+                                      [models.Location(point=Point(x['longdec'], x['latdec']),
+                                                       origin=models.Location.INPUT,
+                                                       buffer=llres_mapping[x['llres']])],
+                                      geometry_field='point'), axis=1)
+        # df.apply(lambda x: Point(x['longdec'], x['latdec']).json, axis=1)
     del df['latdec'], df['longdec']
 
-    # Create a Georeference object from the locality, this automatically runs it through all possible options to georeference it
+    # Create a Georeference object from the locality, this automatically tries georeference it
     df['georeference'] = df['locality'].apply(lambda x: models.Georeference(locality=x))
 
     # Group by date collected & collector?

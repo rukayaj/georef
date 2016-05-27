@@ -13,11 +13,12 @@ from django.contrib.gis.geos import Point, GeometryCollection
 from geopy.geocoders import GoogleV3
 from django.db.models.signals import post_init
 from django.dispatch import receiver
+from django.core.serializers import serialize
 
 
 class Location(models.Model):
-    point = models.PointField(help_text='', null=True, blank=True)
-    polygon = models.PolygonField(help_text='', null=True, blank=True)
+    point = models.PointField(null=True, blank=True)
+    polygon = models.PolygonField(null=True, blank=True)
     TOWN = 'T'
     MOUNTAIN = 'M'
     RAILWAY = 'R'
@@ -33,6 +34,25 @@ class Location(models.Model):
         (UNKNOWN, 'unknown')
     )
     feature_type = models.CharField(max_length=1, choices=feature_type_choices, default=UNKNOWN)
+
+    # Determines the resolution this point has been georeferenced to
+    # TODO Is this right or should it be in Georeference class instead? Talk through with Fhatani
+    # No I think it is right. Georeference 1 "Slangkop" or 2 "Snakehead" should both lead to the same point and the
+    # buffer should be associated with that point, if you can georef it finer then do it and change buffer + lat/long
+    buffer = models.IntegerField(null=True, blank=True)
+
+    # Origin of the point
+    USER = 'US'
+    GOOGLE = 'GO'
+    INPUT = 'IN'
+    UNKNOWN = 'UN'
+    origin_choices = (
+        (USER, 'User'),
+        (GOOGLE, 'Google'),
+        (INPUT, 'Input'),
+        (UNKNOWN, 'Unknown')
+    )
+    origin = models.CharField(max_length=2, choices=origin_choices, default=UNKNOWN)
 
     def clean(self):
         # If it's not got a point or polygon or it's got a point and a polygon raise error
@@ -212,7 +232,7 @@ class Georeference(models.Model):
         # I guess will add more feature types in here
 
     def geolocate(self):
-        locations = []
+        self.locality_parts['georeferenced'] = []
 
         # See if it contains some degrees/minutes/seconds in the string itself
         regex = '\s[sS][\s\.](\d\d)[\s\.d](\d\d)[\s\.m](\d\d)(\.\d+)?s?\s*,?\s*[eE][\s\.](\d\d)[\s\.d](\d\d)[\s\.m](\d\d)(\.\d+)?s?\s'
@@ -226,7 +246,8 @@ class Georeference(models.Model):
             long = east['degrees'] + east['minutes'] / 60 + east['seconds'] / 3600
 
             # Create a new possible point
-            locations.append(Point(lat, long))
+            location = Location(point=Point(long, lat))
+            self.locality_parts['georeferenced'].append(location)
 
             # Remove from the locality string
             self.locality = re.sub(regex, '', self.locality)
@@ -236,13 +257,17 @@ class Georeference(models.Model):
         # Try and geolocate from our own database
 
         # Try and geolocate from google
-        google_point = self._geolocate_using_google()
-        if google_point:
-            locations.append(google_point)
+        self._geolocate_using_google()
 
-        # Try and geolocate from geoconnect
-        if locations:
-            self.locality_parts['georeferenced'] = GeometryCollection(locations).json
+        # TODO try and geolocate from other databases
+
+        # If we have some locations
+        # if locations:
+        #    self.locality_parts['georeferenced'] = GeometryCollection(locations).json
+        if self.locality_parts['georeferenced']:
+            self.locality_parts['georeferenced'] = serialize('custom_geojson',
+                                                             self.locality_parts['georeferenced'],
+                                                             geometry_field='point')
 
     def _geolocate_using_google(self):
         google_geolocator = GoogleV3()
@@ -265,16 +290,14 @@ class Georeference(models.Model):
                 # We are finding the difference in x and y between a point (i.e., x degrees)
                 # self.notes = "Google maps API geolocates this as: " + results.raw['geometry']['location_type'] + \
                 #             " - distance from original qds = " + self._get_km_distance_from_two_points(self.lat, self.long)
-                return Point(long, lat)
-            else:
-                return False
+                # TODO add in llres
+
+                location = Location(point=Point(long, lat), origin=Location.GOOGLE)
+                self.locality_parts['georeferenced'].append(location)
         except AttributeError as e:
             print("Google maps could not find :" + self.locality + ' gives error : ' + str(sys.exc_info()))
-            return False
         except:
             print("ANOTHER ERROR occurred when looking up in google " + str(sys.exc_info()))
-            return False
-            # At this stage perhaps we should run it through bing or another map.
 
 
 @receiver(post_init, sender=Georeference)
