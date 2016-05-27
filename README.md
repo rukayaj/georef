@@ -1,7 +1,7 @@
 ----
 Package managers
 ----
-Install bower & dependencies npm/node http://bower.io/#install-bower
+Install node https://nodejs.org/en/ it comes bundled with npm (node package manager)
 
 ----
 Database
@@ -28,6 +28,7 @@ With the virtual env activated, do "pip install x.whl" for both
 Install other requirementss
 ----
 GDAL and psycopg2 do not install well on windows so have to do the above step. But now you can just do "pip install requirements.txt"
+Install front end requirements with npm install (in same directory as package.json)
 
 ----
 Run

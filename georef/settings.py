@@ -39,7 +39,8 @@ INSTALLED_APPS = [
     'django.contrib.gis',
     'website',
     'leaflet',
-    'djangobower',
+    'npm',
+    #'djangobower',
 ]
 
 MIDDLEWARE_CLASSES = [
@@ -128,8 +129,14 @@ DATE_FORMAT = 'j N Y'
 
 STATIC_URL = '/static/'
 
-# Django-bower
 STATICFILES_FINDERS = (
+    'django.contrib.staticfiles.finders.FileSystemFinder',
+    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+    'npm.finders.NpmFinder'
+)
+
+# Django-bower
+'''STATICFILES_FINDERS = (
     'django.contrib.staticfiles.finders.FileSystemFinder',
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
     'djangobower.finders.BowerFinder'
@@ -138,4 +145,4 @@ BOWER_INSTALLED_APPS = (
     'bootstrap',
     'handsontable',
 )
-BOWER_COMPONENTS_ROOT = os.path.join(BASE_DIR)
+BOWER_COMPONENTS_ROOT = os.path.join(BASE_DIR)'''

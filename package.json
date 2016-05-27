@@ -1,0 +1,25 @@
+{
+  "name": "georef",
+  "version": "1.0.0",
+  "description": "'A django web application to aid georeferencing'",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rukayaj/georef.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/rukayaj/georef/issues"
+  },
+  "homepage": "https://github.com/rukayaj/georef#readme",
+  "dependencies": {
+    "bootstrap": "^3.3.6",
+    "handsontable": "^0.25.0",
+    "jquery": "^2.2.4",
+    "leaflet": "^0.7.7"
+  }
+}
