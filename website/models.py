@@ -16,9 +16,12 @@ from django.dispatch import receiver
 from django.core.serializers import serialize
 
 
-class Location(models.Model):
+class GeoLocation(models.Model):
+    # Geographical location that has either a point or a polygon
     point = models.PointField(null=True, blank=True)
     polygon = models.PolygonField(null=True, blank=True)
+
+    # The type of location
     TOWN = 'T'
     MOUNTAIN = 'M'
     RAILWAY = 'R'
@@ -36,12 +39,11 @@ class Location(models.Model):
     feature_type = models.CharField(max_length=1, choices=feature_type_choices, default=UNKNOWN)
 
     # Determines the resolution this point has been georeferenced to
-    # TODO Is this right or should it be in Georeference class instead? Talk through with Fhatani
     # No I think it is right. Georeference 1 "Slangkop" or 2 "Snakehead" should both lead to the same point and the
     # buffer should be associated with that point, if you can georef it finer then do it and change buffer + lat/long
     buffer = models.IntegerField(null=True, blank=True)
 
-    # Origin of the point
+    # Origin of the point/polygon
     USER = 'US'
     GOOGLE = 'GO'
     INPUT = 'IN'
@@ -60,12 +62,28 @@ class Location(models.Model):
             raise ValidationError('Either store point or polygon.')
 
 
-class Georeference(models.Model):
-    locality = models.TextField(max_length=2000, help_text='The processed locality string')
+class LocalityName(models.Model):
+    # Keep a record of when this was added to the database
+    created_on = models.DateTimeField(auto_now_add=True)
+
+    # The main part of this model is the locality name e.g. "Cape Town"
+    cleaned_locality = models.TextField(max_length=2000, help_text='The processed locality string')
+    locality = models.TextField(max_length=2000, help_text='The original locality string')
+
+    # Parts of the locality name
     locality_parts = JSONField()
+
+    # Potential locations
+    potential_geo_locations = JSONField()
+
+    # The date associated with the locality name (e.g. a town in the '70s vs 2010s might have diff names)
     date = models.DateField(null=True, blank=True)
-    original_locality = models.TextField(max_length=2000, help_text='The original locality string')
-    location = models.ForeignKey(Location, help_text='The geographical location', null=True, blank=True)
+
+    # When the locality name has been geolocated
+    geo_location = models.ForeignKey(GeoLocation, help_text='The geographical location', null=True, blank=True)
+
+    # TODO record who entered this and also which org/what database it came from
+    source = models.CharField(max_length=2)
 
     def _clean_locality(self):
         # A simple dictionary to try and standardise the language a bit, don't run as case sensitive
@@ -73,9 +91,9 @@ class Georeference(models.Model):
             {'replace': 'Farm',
              'regex': [r'\s+plaas\s+', r'[\w\s]+?\s*[oi]n\s+(the\s+)?farm\s*']},
             {'replace': 'Forest',
-             'regex': [r'\s+for\.?']},
+             'regex': [r'\s+for\.']},
             {'replace': 'Nature Reserve',
-             'regex': [r'\s+nat\.?\s+res\.?', r'\s+n\.?\s?r\.?']},
+             'regex': [r'\s+nat\.?\s+res\.?', r'\s+n\.?\s?r\.?', r'nr\.']},
             {'replace': 'Game Reserve',
              'regex': [r'\s+game\s+res\.']},
             {'replace': 'Reserve',
@@ -229,10 +247,19 @@ class Georeference(models.Model):
         if temp != self.locality:
             self.feature_type = self.FARM
 
-        # I guess will add more feature types in here
+            # I guess will add more feature types in here
 
-    def geolocate(self):
-        self.locality_parts['georeferenced'] = []
+    def auto_geolocate(self):
+        # Make a duplicate of the locality text before we do anything to it
+        self.cleaned_locality = self.locality
+
+        # We are going to try and split it apart, so init an empty dict for the json field
+        self.locality_parts = {}
+
+        # Removes the superfluous strings and standardises the language
+        self._clean_locality()
+        self._get_directions()
+        self._set_feature_type()
 
         # See if it contains some degrees/minutes/seconds in the string itself
         regex = '\s[sS][\s\.](\d\d)[\s\.d](\d\d)[\s\.m](\d\d)(\.\d+)?s?\s*,?\s*[eE][\s\.](\d\d)[\s\.d](\d\d)[\s\.m](\d\d)(\.\d+)?s?\s'
@@ -246,8 +273,8 @@ class Georeference(models.Model):
             long = east['degrees'] + east['minutes'] / 60 + east['seconds'] / 3600
 
             # Create a new possible point
-            location = Location(point=Point(long, lat))
-            self.locality_parts['georeferenced'].append(location)
+            location = GeoLocation(point=Point(long, lat))
+            self.potential_geo_locations.append(location)
 
             # Remove from the locality string
             self.locality = re.sub(regex, '', self.locality)
@@ -256,24 +283,25 @@ class Georeference(models.Model):
 
         # Try and geolocate from our own database
 
-        # Try and geolocate from google
-        self._geolocate_using_google()
+        # Try and geolocate from google/other dbs
+        self._geolocate_using_remote_db()
 
         # TODO try and geolocate from other databases
 
         # If we have some locations
         # if locations:
         #    self.locality_parts['georeferenced'] = GeometryCollection(locations).json
-        if self.locality_parts['georeferenced']:
-            self.locality_parts['georeferenced'] = serialize('custom_geojson',
-                                                             self.locality_parts['georeferenced'],
-                                                             geometry_field='point')
+        if self.potential_geo_locations:
+            self.potential_geo_locations = serialize('custom_geojson',
+                                                     self.potential_geo_locations,
+                                                     geometry_field='point')
 
-    def _geolocate_using_google(self):
+    def _geolocate_using_remote_db(self):
         google_geolocator = GoogleV3()
         try:
             if 'province' in self.locality_parts:
-                results = google_geolocator.geocode(query=self.locality + ', ' + self.locality_parts['province'], region='za')
+                results = google_geolocator.geocode(query=self.locality + ', ' + self.locality_parts['province'],
+                                                    region='za')
             else:
                 results = google_geolocator.geocode(query=self.locality, region='za')
 
@@ -283,7 +311,7 @@ class Georeference(models.Model):
                 if address_component['types'] == ['country', 'political']:
                     country = address_component['short_name']
 
-            #if str(results) != self.locality_parts['province'] + ", South Africa" and country == 'ZA':
+            # if str(results) != self.locality_parts['province'] + ", South Africa" and country == 'ZA':
             if "South Africa" and country == 'ZA':
                 lat = results.raw['geometry']['location']['lat']
                 long = results.raw['geometry']['location']['lng']
@@ -292,15 +320,16 @@ class Georeference(models.Model):
                 #             " - distance from original qds = " + self._get_km_distance_from_two_points(self.lat, self.long)
                 # TODO add in llres
 
-                location = Location(point=Point(long, lat), origin=Location.GOOGLE)
-                self.locality_parts['georeferenced'].append(location)
+                location = GeoLocation(point=Point(long, lat), origin=GeoLocation.GOOGLE)
+                self.potential_geo_locations.append(location)
         except AttributeError as e:
             print("Google maps could not find :" + self.locality + ' gives error : ' + str(sys.exc_info()))
         except:
             print("ANOTHER ERROR occurred when looking up in google " + str(sys.exc_info()))
 
 
-@receiver(post_init, sender=Georeference)
+'''
+@receiver(post_init, sender=LocalityName)
 def post_init(sender, instance, **kwargs):
     # Make a duplicate of the locality text before we do anything to it
     instance.original_locality = instance.locality
@@ -311,5 +340,4 @@ def post_init(sender, instance, **kwargs):
     # Removes the superfluous strings and standardises the language
     instance._clean_locality()
     instance._get_directions()
-    instance._set_feature_type()
-    instance.geolocate()
+    instance._set_feature_type()'''

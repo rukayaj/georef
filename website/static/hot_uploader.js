@@ -11,47 +11,58 @@ yearValidator = function(value, callback) {
     callback((value <= this_year && value > 1500) || value == 0);
 };
 
+var headings = [
+        'unique_id',
+        'group',
+        'day',
+        'month',
+        'year',
+        'lat',
+        'long',
+        'res',
+        'locality'
+    ]
 var hotSettings = {
     columns: [
         {
-            data: 'brahms',
+            data: headings[0],
             type: 'numeric',
         },
         {
-            data: 'collector_number',
+            data: headings[1],
             type: 'text'
         },
         {
-            data: 'collected_day',
+            data: headings[2],
             type: 'numeric',
             validator: dayValidator
         },
         {
-            data: 'collected_month',
+            data: headings[3],
             type: 'numeric',
             validator: monthValidator
         },
         {
-            data: 'collected_year',
+            data: headings[4],
             type: 'numeric',
             validator: yearValidator
         },
         {
-            data: 'latdec',
+            data: headings[5],
             type: 'numeric',
             format: '00.00000000',
         },
         {
-            data: 'longdec',
+            data: headings[6],
             type: 'numeric',
             format: '00.00000000',
         },
         {
-            data: 'llres',
+            data: headings[7],
             type: 'text',
         },
         {
-            data: 'locality',
+            data: headings[8],
             type: 'text',
         }
     ],
@@ -60,17 +71,7 @@ var hotSettings = {
     height: 400,
     minRows: 2,
     rowHeaders: true,
-    colHeaders: [
-        'brahms',
-        'collector_number',
-        'collected_day',
-        'collected_month',
-        'collected_year',
-        'latdec',
-        'longdec',
-        'llres',
-        'locality'
-    ]
+    colHeaders: headings
 };
 
 var container = document.getElementById('hot');

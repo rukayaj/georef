@@ -2,6 +2,7 @@ from django.contrib.gis.serializers.geojson import Serializer as GeoJSONSerializ
 
 
 class Serializer(GeoJSONSerializer):
+    # We have to override the handle_field method just slightly in order to make it display the user friendly choice
     # Taken from https://groups.google.com/forum/#!topic/django-users/u2L1_BAtFM0
     def handle_field(self, obj, field):
         if field.name == self.geometry_field:
