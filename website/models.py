@@ -14,6 +14,7 @@ from geopy.geocoders import GoogleV3
 from django.db.models.signals import post_init
 from django.dispatch import receiver
 from django.core.serializers import serialize
+from django.contrib.auth.models import User
 
 
 class GeoLocation(models.Model):
@@ -67,17 +68,13 @@ class LocalityName(models.Model):
     created_on = models.DateTimeField(auto_now_add=True)
 
     # The main part of this model is the locality name e.g. "Cape Town"
-    cleaned_locality = models.TextField(max_length=2000, help_text='The processed locality string')
-    locality = models.TextField(max_length=2000, help_text='The original locality string')
+    locality_name = models.TextField(max_length=2000, help_text='The locality string')
 
-    # Parts of the locality name
+    # Parts of the locality name, cleaned
     locality_parts = JSONField()
 
-    # Potential locations
+    # Potential locations - I'm not really happy about storing this
     potential_geo_locations = JSONField()
-
-    # The date associated with the locality name (e.g. a town in the '70s vs 2010s might have diff names)
-    date = models.DateField(null=True, blank=True)
 
     # When the locality name has been geolocated
     geo_location = models.ForeignKey(GeoLocation, help_text='The geographical location', null=True, blank=True)
@@ -118,7 +115,7 @@ class LocalityName(models.Model):
         # Run a place through it
         for item in standardise_language:
             for reg in item['regex']:
-                self.locality = re.sub(reg, ' ' + item['replace'], self.locality, flags=re.IGNORECASE)
+                self.locality_parts['locality'] = re.sub(reg, ' ' + item['replace'], self.locality_parts['locality'], flags=re.IGNORECASE)
 
         # Set major area and remove it from string
         provinces = [
@@ -144,9 +141,9 @@ class LocalityName(models.Model):
         ]
         for item in provinces:
             for reg in item['regex']:
-                temp = re.sub(reg, '', self.locality, flags=re.IGNORECASE)
-                if temp != self.locality:
-                    self.locality = temp
+                temp = re.sub(reg, '', self.locality_parts['locality'], flags=re.IGNORECASE)
+                if temp != self.locality_parts['locality']:
+                    self.locality_parts['locality'] = temp
                     self.locality_parts['province'] = item['replace']
 
         # Do we want to split up places in the string if possible?
@@ -161,13 +158,13 @@ class LocalityName(models.Model):
         # If there's something in front of it and something behind it, i.e., ^muizenberg, 20 km s of tokai$
         # we really don't want to use the directions then, rather use the main thing and strip out the rest
         main_regex = '\s*(\d\d*[,\.]?\d*)\s*(k?m|miles)\s+(([swne]{1,3})|south|no?rth|east|west)\s*(of|fro?m)?\s*'
-        m = re.search(r'^(.+?)' + re.escape(main_regex) + '(.+)$', self.locality, re.IGNORECASE)
+        m = re.search(r'^(.+?)' + re.escape(main_regex) + '(.+)$', self.locality_parts['locality'], re.IGNORECASE)
         if m:
-            self.locality = m.group(1)
+            self.locality_parts['locality'] = m.group(1)
             return
 
         # We store the locality variable and try and substitute stuff in it
-        locality = self.locality
+        locality = self.locality_parts['locality']
 
         # Look for digits and measurement units
         measurement_units = {'miles': ['miles', 'mile', 'mi'],
@@ -222,39 +219,42 @@ class LocalityName(models.Model):
             locality = re.sub('([oO]f|[fF]ro?m)', '', locality)
             locality = re.sub('^\s*[\.,;]', '', locality)
             locality = re.sub('\s*[\.,;]$', '', locality)
-            self.locality = locality.strip()
-            self.locality_parts = {'bearings': bearings, 'distance': distance}
+            self.locality_parts['locality'] = locality.strip()
+            self.locality_parts['bearings'] = bearings
+            self.locality_parts['distance'] = distance
         else:
             return
 
     def _set_feature_type(self):
-        temp = self.locality
+        temp = self.locality_parts['locality']
 
         # Remove "in the / on the" for farms
-        self.locality = re.sub(r'[\w\s]+?\s*[OoIi]n\s+(the\s+)?[Ff]arm\s*', 'Farm', self.locality)
+        self.locality_parts['locality'] = re.sub(r'[\w\s]+?\s*[OoIi]n\s+(the\s+)?[Ff]arm\s*', 'Farm',
+                                                 self.locality_parts['locality'])
 
         # Farm x, blah blah blah (we don't need the blah blah blah bit, so remove it and strip out the "Farm"
-        self.locality = re.sub(r'^\s*Farm\s*(.+?),.+', "\g<1>", self.locality)
+        self.locality_parts['locality'] = re.sub(r'^\s*Farm\s*(.+?),.+', "\g<1>", self.locality_parts['locality'])
 
         # If this string contains three digits it's very likely to be a farm number
         # Alternate regex ^(([A-Za-z\-]+\s*?){1,4}),?\s?[\(\[\{]?(\d{3})[^\.].*$
-        results = re.search('\s*[\[\{\(]?\s*(\d\d\d)\s*[\]\}\)]?\s*', self.locality, re.IGNORECASE)
+        results = re.search('\s*[\[\{\(]?\s*(\d\d\d)\s*[\]\}\)]?\s*', self.locality_parts['locality'], re.IGNORECASE)
         if results and results.group(1):
-            self.locality = self.locality.replace(results.group(0), '')
+            self.locality_parts['locality'] = self.locality_parts['locality'].replace(results.group(0), '')
             self.locality_parts['farm_number'] = results.group(1)
 
         # If anything has changed in the locality string after this then it is a farm
-        if temp != self.locality:
+        if temp != self.locality_parts['locality']:
             self.feature_type = self.FARM
 
             # I guess will add more feature types in here
 
     def auto_geolocate(self):
-        # Make a duplicate of the locality text before we do anything to it
-        self.cleaned_locality = self.locality
+        # Initialize as a blank list if we don't start with any potential geo locations
+        # if not self.potential_geo_locations:
+        #     self.potential_geo_locations = []
 
         # We are going to try and split it apart, so init an empty dict for the json field
-        self.locality_parts = {}
+        self.locality_parts = {'locality': self.locality_name}
 
         # Removes the superfluous strings and standardises the language
         self._clean_locality()
@@ -263,7 +263,7 @@ class LocalityName(models.Model):
 
         # See if it contains some degrees/minutes/seconds in the string itself
         regex = '\s[sS][\s\.](\d\d)[\s\.d](\d\d)[\s\.m](\d\d)(\.\d+)?s?\s*,?\s*[eE][\s\.](\d\d)[\s\.d](\d\d)[\s\.m](\d\d)(\.\d+)?s?\s'
-        match = re.search(regex, self.locality)
+        match = re.search(regex, str(self.locality_parts['locality']))
         if match:
             south = {'degrees': float(match.group(1)), 'minutes': float(match.group(2)),
                      'seconds': float(match.group(3))}
@@ -277,7 +277,7 @@ class LocalityName(models.Model):
             self.potential_geo_locations.append(location)
 
             # Remove from the locality string
-            self.locality = re.sub(regex, '', self.locality)
+            self.locality_parts['locality'] = re.sub(regex, '', str(self.locality_parts['locality']))
 
         # TODO see if it contains decimal degrees in the string itself
 
@@ -292,18 +292,17 @@ class LocalityName(models.Model):
         # if locations:
         #    self.locality_parts['georeferenced'] = GeometryCollection(locations).json
         if self.potential_geo_locations:
-            self.potential_geo_locations = serialize('custom_geojson',
-                                                     self.potential_geo_locations,
-                                                     geometry_field='point')
+            return serialize('custom_geojson', self.potential_geo_locations, geometry_field='point')
 
     def _geolocate_using_remote_db(self):
         google_geolocator = GoogleV3()
         try:
             if 'province' in self.locality_parts:
-                results = google_geolocator.geocode(query=self.locality + ', ' + self.locality_parts['province'],
+                results = google_geolocator.geocode(query=self.locality_parts['locality'] + ', ' +
+                                                          self.locality_parts['province'],
                                                     region='za')
             else:
-                results = google_geolocator.geocode(query=self.locality, region='za')
+                results = google_geolocator.geocode(query=str(self.locality_parts['locality']), region='za')
 
             # Has it actually managed to find coords beyond province level? and are we in the right country?
             country = ''
@@ -323,9 +322,27 @@ class LocalityName(models.Model):
                 location = GeoLocation(point=Point(long, lat), origin=GeoLocation.GOOGLE)
                 self.potential_geo_locations.append(location)
         except AttributeError as e:
-            print("Google maps could not find :" + self.locality + ' gives error : ' + str(sys.exc_info()))
+            print("Google maps could not find :" + str(self.locality_parts['locality']) + ' gives error : ' + str(sys.exc_info()))
         except:
             print("ANOTHER ERROR occurred when looking up in google " + str(sys.exc_info()))
+
+
+class LocalityDate(models.Model):
+    """
+    A locality might have several dates associated with it
+    """
+    locality_name = models.ForeignKey(LocalityName)
+    date = models.DateField(null=True, blank=True)
+
+
+class GeoReference(models.Model):
+    locality_name = models.ForeignKey(LocalityName, null=True, blank=True)
+    geo_location = models.ForeignKey(GeoLocation, null=True, blank=True)
+    user = models.ForeignKey(User)
+    group_id = models.TextField(max_length=50)
+    unique_id = models.TextField(max_length=50)
+    created_on = models.DateTimeField(auto_now_add=True)
+
 
 
 '''

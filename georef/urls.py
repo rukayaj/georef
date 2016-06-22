@@ -21,4 +21,6 @@ urlpatterns = [
     url(r'^admin/', admin.site.urls),
     url(r'^$', views.index, name='index'),
     url(r'^process$', views.process, name='process'),
+    url(r'^process-locality/', views.process_locality, name='process_locality'),
+    url(r'^set-georeference/', views.set_georeference, name='set_georeference'),
 ]

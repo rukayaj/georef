@@ -8,18 +8,26 @@
 {% endblock css %}
 
 {% block content %}
-<h1 id="locality_name"><small id="date"></small></h1>
-<div id="group"></div><div id="unique_id"></div>
-<button class="btn btn-primary btn-process" data-locations='{{ row.locality_name.potential_geo_locations }}'>Process</button>
+<p id="pagination-here"></p>
+<h1 id="locality_name"></h1>
+Group: <div id="group"></div>
+<br>
+Unique ID: <div id="unique_id"></div>
+<br>
+Date: <div id="date"></div>
 <hr>
 <div id="leaflet" style="height: 400px"></div>
 {% endblock content %}
 
 {% block js %}
-<script>
-  data = {{ data|safe }};
-</script>
+<script src="{% static 'bootpag/lib/jquery.bootpag.js' %}"></script>
 <script src="{% static 'leaflet/dist/leaflet.js' %}"></script>
 <script src="{% static 'leaflet-draw/dist/leaflet.draw.js' %}"></script>
+<script>
+  data = {{ data|safe }};
+  geolocate_ajax_url = "{% url 'process_locality' %}";
+  set_georef_ajax_url = "{% url 'set_georeference' %}";
+  csrf = '{{ csrf_token }}';
+</script>
 <script src="{% static 'georeference.js' %}"></script>
 {% endblock js %}

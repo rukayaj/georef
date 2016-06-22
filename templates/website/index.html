@@ -16,6 +16,9 @@
 {% endblock content %}
 
 {% block js %}
+<script>
+  var input_columns = {{ input_columns|safe }};
+</script>
 <script src="{% static 'handsontable/dist/handsontable.full.js' %}"></script>
 <script src="{% static 'hot_uploader.js' %}"></script>
 <script>

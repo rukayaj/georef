@@ -17,6 +17,7 @@
   },
   "homepage": "https://github.com/rukayaj/georef#readme",
   "dependencies": {
+    "bootpag": "^1.0.7",
     "bootstrap": "^3.3.6",
     "handsontable": "^0.25.0",
     "jquery": "^2.2.4",
