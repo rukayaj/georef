@@ -1,0 +1,66 @@
+{% extends "website/_base.html" %}
+{% load static %}
+
+{% block css %}
+<link rel="stylesheet" href="{% static 'leaflet/dist/leaflet.css' %}">
+<link rel="stylesheet" href="{% static 'leaflet-draw/dist/leaflet.draw.css' %}">
+<link rel="stylesheet" href="{% static 'leaflet-measure/dist/leaflet-measure.css' %}">
+<link rel="stylesheet" href="{% static 'leafletmeasurecontrol/leaflet.measurecontrol.css' %}">
+</head>
+<body>
+  <script src="http://cdn.leafletjs.com/leaflet-0.7.3/leaflet.js"></script>
+{% endblock css %}
+
+{% block heading %}
+  <a class="btn btn-warning" role="button" href="{% url 'index' %}">
+    <span class="glyphicon glyphicon-arrow-left" aria-hidden="true"></span>
+    Back
+  </a>
+  Georeference locality ID {{ georeference.unique_id }}
+  {% endblock %}
+
+{% block content %}
+<h2>
+    <small>{{ georeference.locality_name }}</small>
+  <button class="btn btn-info" role="button">Show others in Group #{{ georeference.group_id }}
+  <span class="glyphicon glyphicon-th" aria-hidden="true"></span></button>
+</h2>
+<hr>
+<h3>Locality parts</h3>
+<div class="well"><strong>The system attempts to clean up the locality name and to recognise distances,
+bearings, etc and apply them to the map. Listed below are the different parts of the locality name, split up.</strong></div>
+<table class="table table-striped">
+  <thead>
+    <tr>
+    {% for key, item in georeference.locality_name.locality_parts.items %}
+    <th>{{ key }}</th>
+    {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+    {% for key, item in georeference.locality_name.locality_parts.items %}
+    <td>{{ item }}</td>
+    {% endfor %}
+    </tr>
+  </tbody>
+</table>
+<hr>
+<div id="leaflet" style="height: 400px"></div>
+{% endblock content %}
+
+{% block js %}
+<script src="{% static 'leaflet/dist/leaflet.js' %}"></script>
+<script src="{% static 'leaflet-draw/dist/leaflet.draw.js' %}"></script>
+<script src="{% static 'leaflet-measure/dist/leaflet-measure.min.js' %}"></script>
+
+<!-- Not on NPM, https://github.com/makinacorpus/Leaflet.MeasureControl -->
+<script src="{% static 'leafletmeasurecontrol/leaflet.measurecontrol.js' %}"></script>
+<script>
+  var potential_geographical_positions = $.parseJSON('{{ georeference.potential_geographical_positions|safe }}');
+  set_georef_ajax_url = "{% url 'set_georeference' georeference.id %}";
+  var georeference_id = '{{ georeference.id }}';
+  csrf = '{{ csrf_token }}';
+</script>
+<script src="{% static 'georeference.js' %}"></script>
+{% endblock js %}

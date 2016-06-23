@@ -16,6 +16,7 @@ Including another URLconf
 from django.conf.urls import url
 from django.contrib import admin
 from website import views
+from website.views import DeleteGeoreference
 from django.conf.urls import include
 
 
@@ -23,10 +24,13 @@ urlpatterns = [
     url(r'^admin/', admin.site.urls),
     url(r'^$', views.index, name='index'),
     url(r'^completed/$', views.completed, name='completed'),
-    url(r'^add/bulk', views.add_bulk, name='add_bulk'),
+    url(r'^add/bulk/', views.add_bulk, name='add_bulk'),
+    url(r'^georeference/(?P<pk>[0-9]+)/', views.GeoreferenceDetailView.as_view(), name='georeference'),
     url(r'^process$', views.process, name='process'),
     url(r'^process-locality/', views.process_locality, name='process_locality'),
-    url(r'^set-georeference/', views.set_georeference, name='set_georeference'),
+    url(r'^set-georeference/(?P<pk>[0-9]+)/', views.set_georeference, name='set_georeference'),
+
+    url(r'^delete/(?P<pk>[0-9]+)/$', DeleteGeoreference.as_view(), name='delete'),
 
     # Accounts
     url('^accounts/', include('django.contrib.auth.urls')),

@@ -21,15 +21,16 @@
   <tbody>
     {% for georeference in georeferences %}
     <tr>
-      <td>{{ georeference.created_on }}</td>
+      <td class="col-md-2">{{ georeference.created_on }}</td>
       <td>{{ georeference.unique_id }}</td>
       <td>{{ georeference.group_id }}</td>
-      <td class="col-md-6">{{ georeference.locality_name }}</td>
-      <td>
-          <a class="btn btn-primary" href="{{ georeference.id }}" role="button">Georeference
+      <td>{{ georeference.locality_name }}</td>
+      <td class="col-md-3">
+          <a class="btn btn-primary georeference" href="{% url 'georeference' georeference.id %}" role="button">Georeference
             <span class="glyphicon glyphicon-globe" aria-hidden="true"></span></a>
-          <a class="btn btn-danger" href="{{ georeference.id }}" role="button">Delete
-            <span class="glyphicon glyphicon-trash" aria-hidden="true"></span></a>
+          <button class="btn btn-danger delete-prompt" data-url="{% url 'delete' georeference.id %}"
+                  data-title="{{ georeference.locality_name }}"  data-toggle="modal" data-target="#deleteModal" role="button">Delete
+            <span class="glyphicon glyphicon-trash" aria-hidden="true"></span></button>
       </td>
     </tr>
     {% empty %}
@@ -37,6 +38,31 @@
     {% endfor %}
   </tbody>
 </table>
+
+
+<!-- Modal for deleting -->
+<div class="modal fade" id="deleteModal" tabindex="-1" role="dialog" aria-labelledby="deleteModalLabel">
+  <div class="modal-dialog" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h4 class="modal-title" id="myModalLabel">Are you sure?</h4>
+      </div>
+      <div class="modal-body">
+        <div id="deleteModalPrompt">Do you want to delete "<span id="localityNameForDelete"></span>"?</div>
+        <div id="deleteModalSuccess" class="success" style="display: none">
+          Successfully deleted.
+          <a href="{% url 'index' %}" type="button" class="btn btn-success">Continue
+            <span class="glyphicon glyphicon-arrow-right" aria-hidden="true"></span>
+          </a>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="delete">Delete <span class="glyphicon glyphicon-trash" aria-hidden="true"></span></button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock content %}
 
 {% block js %}
@@ -45,6 +71,27 @@
 <script>
   $(document).ready(function() {
     $('#dataTable').DataTable();
-  } );
+
+    $('.delete-prompt').click(function() {
+      // Replace the modal body text with the locality text so ppl know what they are deleting
+      $('#localityNameForDelete').text($(this).data('title'));
+
+      var ajax_url = $(this).data('url');
+
+      $('#delete').click(function() {
+        // If they click delete then make the ajax call
+        $.ajax({
+          url: ajax_url,
+          method: "POST",
+          data: { 'csrfmiddlewaretoken': '{{ csrf_token }}' },
+          dataType: "json"
+        }).done(function() {
+          $('#deleteModalPrompt').hide();
+          $('#deleteModalSuccess').show();
+          $('.modal-footer').hide();
+        });
+      });
+    })
+  });
 </script>
 {% endblock js %}

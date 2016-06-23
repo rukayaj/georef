@@ -13,6 +13,8 @@ from django.shortcuts import redirect
 import json
 from django.core import serializers
 from django.forms.models import model_to_dict
+from django.views.generic import View
+from django.views.generic.detail import SingleObjectMixin, DetailView
 
 
 input_columns = ['unique_id',
@@ -51,25 +53,50 @@ def completed(request):
     return render(request, 'website/completed.html', {'georeferences': georeferences})
 
 
+class DeleteGeoreference(SingleObjectMixin, View):
+    model = models.GeoReference
+
+    def post(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        self.object.delete()
+        return HttpResponse(status=204)
+
+
+class GeoreferenceDetailView(DetailView):
+    model = models.GeoReference
+    template_name = "website/georeference.html"  # Defaults to georeference_detail.html
+    context_object_name = 'georeference'
+
+#def georeference(request):
+#    return render(request, 'website/georeference.html', {'georeferences': georeferences})
+
+
 def set_georeference(request):
-    if request.is_ajax():
-        if 'content[id]' in request.POST:
-            # It is a GeographicalPosition from our own database
-            return HttpResponse(json.dumps({'success': True}))
+    # We have to work from a georeference for this view
+    if 'georeference_id' not in request.POST:
+        return HttpResponse(status=403)
 
-        # Get the variables from the post request
-        locality_name = request.POST['content[locality]']
-        date = request.POST['content[date]']
-        coordinates = request.POST['content[coordinates]']
-        source = request.POST['content[source]']
-        res = request.POST['content[resolution]']
+    # Get the georeference that is being worked on
+    georeference = models.GeoReference.get(id=request.POST['georeference_id'])
 
-        # Create a Geo Location object
+    # It is a GeographicalPosition from our own database
+    if 'content[id]' in request.POST:
+        pass
 
-        # Create a Locality Name object
-        locality = models.LocalityName(locality_name=locality_name)
+    # Or we have to construct a geographical position object
+    lat = request.POST['content[lat]']
+    long = request.POST['content[long]']
+    origin = request.POST['content[origin]']
+    buffer = request.POST['content[buffer]']
+    geographical_position = models.GeographicalPosition(point=Point(long, lat),
+                                                        origin=models.GeographicalPosition.INPUT,
+                                                        buffer=buffer)
+    geographical_position.save()
 
-        return HttpResponse(json.dumps({'success': True}))
+    # Link to the georeference object i.e. it now registers that locality string has been georeferenced
+    georeference.geographical_position = geographical_position
+    georeference.save()
+    return redirect('index')
 
 
 def process_locality(request):
@@ -169,56 +196,3 @@ def process(request):
     df.apply(create_georeference, axis=1)
 
     return redirect('index')
-
-
-    # Create a Locality Name object from the locality ready for georeferencing
-    # df['locality_name'] = df.apply(lambda x: models.LocalityName(locality_name=x['locality'],
-    #                                                             date=x['date'],
-    #                                                             potential_geographical_positions=x['original_point']),
-    #                               axis=1)
-    # Serialize that Location object into geojson so that it's easily accessible in the template
-    # df.loc[pd.notnull(df['lat']) & pd.notnull(df['long']), 'original_point'] = \
-    #    df.apply(lambda x:  serialize('custom_geojson',
-    #                                  [x['original_point']],
-    #                                  geometry_field='point'), axis=1)
-
-
-    #del df['locality'], df['date'], df['original_point']
-
-    # Try and automatically georeference it (gathers different options)
-    # df['locality_name'].apply(lambda x: x.auto_geolocate())
-    # import pdb; pdb.set_trace()
-
-    # Group by date collected & collector?
-
-    # Send it back to the template
-    #return render(request, 'website/process.html', {'data': df.to_json(orient='records')})
-    #   # .to_html(classes="table table-striped") .to_json()df.to_dict(orient='records')
-
-    
-
-    # - Locality parts:
-
-    # Lat/long
-
-    # - Eg. Nieuwoudtville. Oorlogskloof Nature Reserve. Western Cape.
-    # Place 1
-    # Place 2
-    # Place 3, etc
-
-    # - Eg. Namaqualand, naby Spitskop. Lake Panic near Skukuza; Kruger National Park
-    # Near
-    # Place
-
-    # - EG 20km N of Cape Town
-    # Distance
-    # Direction
-    # Place
-
-    # Farm name
-    # Farm number
-
-    # Reserve/Game farm/park
-
-    # Road
-
