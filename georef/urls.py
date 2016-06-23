@@ -16,11 +16,19 @@ Including another URLconf
 from django.conf.urls import url
 from django.contrib import admin
 from website import views
+from django.conf.urls import include
+
 
 urlpatterns = [
     url(r'^admin/', admin.site.urls),
     url(r'^$', views.index, name='index'),
+    url(r'^completed/$', views.completed, name='completed'),
+    url(r'^add/bulk', views.add_bulk, name='add_bulk'),
     url(r'^process$', views.process, name='process'),
     url(r'^process-locality/', views.process_locality, name='process_locality'),
     url(r'^set-georeference/', views.set_georeference, name='set_georeference'),
+
+    # Accounts
+    url('^accounts/', include('django.contrib.auth.urls')),
+    # url(r'^accounts/', include('accounts.urls', namespace='accounts')),
 ]

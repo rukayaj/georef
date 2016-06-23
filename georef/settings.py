@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'website',
     'leaflet',
     'npm',
+    'djgeojson',
 ]
 
 MIDDLEWARE_CLASSES = [

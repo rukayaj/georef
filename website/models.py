@@ -15,9 +15,10 @@ from django.db.models.signals import post_init
 from django.dispatch import receiver
 from django.core.serializers import serialize
 from django.contrib.auth.models import User
+from djgeojson.serializers import Deserializer as GeoJSONDeserializer
 
 
-class GeoLocation(models.Model):
+class GeographicalPosition(models.Model):
     # Geographical location that has either a point or a polygon
     point = models.PointField(null=True, blank=True)
     polygon = models.PolygonField(null=True, blank=True)
@@ -68,19 +69,43 @@ class LocalityName(models.Model):
     created_on = models.DateTimeField(auto_now_add=True)
 
     # The main part of this model is the locality name e.g. "Cape Town"
-    locality_name = models.TextField(max_length=2000, help_text='The locality string')
+    locality_name = models.TextField(help_text='The locality string')
 
     # Parts of the locality name, cleaned
     locality_parts = JSONField()
 
-    # Potential locations - I'm not really happy about storing this
-    potential_geo_locations = JSONField()
+    def __str__(self):
+        return self.locality_name
 
-    # When the locality name has been geolocated
-    geo_location = models.ForeignKey(GeoLocation, help_text='The geographical location', null=True, blank=True)
+    def _get_lat_long_dms(self):
+        # See if it contains some degrees/minutes/seconds in the string itself
+        regex = '\s[sS][\s\.](\d\d)[\s\.d](\d\d)[\s\.m](\d\d)(\.\d+)?s?\s*,?\s*[eE][\s\.](\d\d)[\s\.d](\d\d)[\s\.m](\d\d)(\.\d+)?s?\s'
+        match = re.search(regex, str(self.locality_parts['locality']))
+        if match:
+            south = {'degrees': float(match.group(1)), 'minutes': float(match.group(2)),
+                     'seconds': float(match.group(3))}
+            east = {'degrees': float(match.group(5)), 'minutes': float(match.group(6)),
+                    'seconds': float(match.group(7))}
+            lat = south['degrees'] + south['minutes'] / 60 + south['seconds'] / 3600
+            long = east['degrees'] + east['minutes'] / 60 + east['seconds'] / 3600
 
-    # TODO record who entered this and also which org/what database it came from
-    source = models.CharField(max_length=2)
+            # Remove from the locality string
+            self.locality_parts['locality'] = re.sub(regex, '', str(self.locality_parts['locality']))
+            self.locality_parts['lat'] = lat
+            self.locality_parts['long'] = long
+
+    def _get_lat_long_dd(self):
+        # See if it contains decimal degrees in the string itself
+        regex = r'(-?[1-4][1-4]\.[0-9]+),\s+(-?[1-4][1-4]\.[0-9]+)'
+        match = re.search(regex, str(self.locality_parts['locality']))
+        if match:
+            lat = float(match.group(1))
+            long = float(match.group(2))
+            self.locality_parts['locality'] = re.sub(regex, '', str(self.locality_parts['locality']))
+
+            # Just be aware that we assume here that there is no lat/long in here
+            self.locality_parts['lat'] = lat
+            self.locality_parts['long'] = long
 
     def _clean_locality(self):
         # A simple dictionary to try and standardise the language a bit, don't run as case sensitive
@@ -115,7 +140,8 @@ class LocalityName(models.Model):
         # Run a place through it
         for item in standardise_language:
             for reg in item['regex']:
-                self.locality_parts['locality'] = re.sub(reg, ' ' + item['replace'], self.locality_parts['locality'], flags=re.IGNORECASE)
+                self.locality_parts['locality'] = re.sub(reg, ' ' + item['replace'], self.locality_parts['locality'],
+                                                         flags=re.IGNORECASE)
 
         # Set major area and remove it from string
         provinces = [
@@ -173,25 +199,37 @@ class LocalityName(models.Model):
                                             'kilometer'],
                              'meters': ['m', 'meters', 'metres', 'meter', 'metre', 'ms'],
                              'feet': ['ft', 'feet']}
-        distance = 0
-        measurement = ''
-        for name, variations in measurement_units.items():
-            for v in variations:
-                regex = '\s*(\d\d*[,\.]?\d*)\s*(' + v + ')'
-                substitute = re.search(regex, locality, re.IGNORECASE)
-                temp = re.sub(regex, '', locality, re.IGNORECASE)
-                if temp is not locality:
-                    distance = float(substitute.group(1))
-                    measurement = name
-                    if variations == measurement_units['miles']:
-                        distance *= 1.60934
-                    elif variations is measurement_units['meters']:
-                        distance *= 1000
-                    elif variations is measurement_units['feet']:
-                        distance *= 3280.84
-                    elif variations is measurement_units['yards']:
-                        distance *= 1093.61
-                    locality = temp
+
+        # For loops in python do not have scope so the distance var declared within it is available outside
+        # But for clarity I am declaring distance here too
+        km_distance = False
+
+        # Loop through miles, yards,
+        for measurement_unit, variations in measurement_units.items():
+            for variation in variations:
+                # Looking for 23.5 kmeters, 1,2 mi, 234,6 kms, etc
+                regex = '\s*(\d\d*[,\.]?\d*)\s*(' + variation + ')'
+
+                # Find matches
+                match = re.search(regex, locality, re.IGNORECASE)
+                if match:
+                    # Convert the distance string to a float, replace the , with . for decimal points
+                    km_distance = float(match.group(1).replace(',', '.'))
+
+                    # Do some conversion for the different measurement units - we standardise to km
+                    if measurement_unit == 'miles':
+                        km_distance *= 1.60934
+                    elif measurement_unit == 'meters':
+                        km_distance *= 0.001
+                    elif measurement_unit is 'feet':
+                        km_distance *= 0.0003048
+                    elif measurement_unit is 'yards':
+                        km_distance *= 0.0009144
+
+                    # Remove it from the locality string
+                    locality = re.sub(regex, '', locality, re.IGNORECASE)
+
+                    # Break out of both loops, we've found the distance/measurements
                     break
 
         # Look for bearings, keep track of the ones we need to remove and get rid of them afterwards
@@ -214,14 +252,18 @@ class LocalityName(models.Model):
             locality = re.sub(regex, '', locality, flags=re.IGNORECASE)
 
         # If we have bearings and distance and measurement we can make a sensible set of directions to return
-        if bearings and distance and measurement:
-            # Clean up the locality string
+        if bearings and km_distance:
+            # Clean up the locality string some more - e.g. if string is 96 km north [of/from] cape town
             locality = re.sub('([oO]f|[fF]ro?m)', '', locality)
+
+            # This seems to be if we're left with , or ;, but not sure why removing?
             locality = re.sub('^\s*[\.,;]', '', locality)
             locality = re.sub('\s*[\.,;]$', '', locality)
+
+            # Save the different cleaned locality parts
             self.locality_parts['locality'] = locality.strip()
             self.locality_parts['bearings'] = bearings
-            self.locality_parts['distance'] = distance
+            self.locality_parts['km_distance'] = km_distance
         else:
             return
 
@@ -248,61 +290,75 @@ class LocalityName(models.Model):
 
             # I guess will add more feature types in here
 
+
+@receiver(post_init, sender=LocalityName)
+def post_init(sender, instance, **kwargs):
+    # We are going to try and split it apart, so init an empty dict for the json field
+    instance.locality_parts = {'locality': instance.locality_name}
+
+    # Removes the superfluous strings and standardises the language
+    instance._clean_locality()
+    instance._get_directions()
+    instance._set_feature_type()
+    instance._get_lat_long_dms()
+    instance._get_lat_long_dd()
+
+
+class LocalityDate(models.Model):
+    """
+    A locality might have several dates associated with it
+    """
+    locality_name = models.ForeignKey(LocalityName)
+    date = models.DateField(null=True, blank=True)
+
+
+class GeoReference(models.Model):
+    locality_name = models.ForeignKey(LocalityName)
+    geographical_position = models.ForeignKey(GeographicalPosition, null=True, blank=True)
+    user = models.ForeignKey(User)
+    group_id = models.CharField(max_length=50)
+    unique_id = models.CharField(max_length=50)
+    created_on = models.DateTimeField(auto_now_add=True)
+    notes = models.TextField()
+
+    # Potential locations - this is just a load of geojson
+    potential_geographical_positions = JSONField(null=True, blank=True)
+
     def auto_geolocate(self):
         # Initialize as a blank list if we don't start with any potential geo locations
-        # if not self.potential_geo_locations:
-        #     self.potential_geo_locations = []
+        if not self.potential_geographical_positions:
+            self.potential_geographical_positions = []
+        else:
+            ps = self.potential_geographical_positions
+            self.potential_geographical_positions = []
+            for gl in GeoJSONDeserializer(stream_or_string=ps,
+                                          model_name='website.GeographicalPosition',
+                                          geometry_field='point'):
+                self.potential_geographical_positions.append(gl.object)
 
-        # We are going to try and split it apart, so init an empty dict for the json field
-        self.locality_parts = {'locality': self.locality_name}
-
-        # Removes the superfluous strings and standardises the language
-        self._clean_locality()
-        self._get_directions()
-        self._set_feature_type()
-
-        # See if it contains some degrees/minutes/seconds in the string itself
-        regex = '\s[sS][\s\.](\d\d)[\s\.d](\d\d)[\s\.m](\d\d)(\.\d+)?s?\s*,?\s*[eE][\s\.](\d\d)[\s\.d](\d\d)[\s\.m](\d\d)(\.\d+)?s?\s'
-        match = re.search(regex, str(self.locality_parts['locality']))
-        if match:
-            south = {'degrees': float(match.group(1)), 'minutes': float(match.group(2)),
-                     'seconds': float(match.group(3))}
-            east = {'degrees': float(match.group(5)), 'minutes': float(match.group(6)),
-                    'seconds': float(match.group(7))}
-            lat = south['degrees'] + south['minutes'] / 60 + south['seconds'] / 3600
-            long = east['degrees'] + east['minutes'] / 60 + east['seconds'] / 3600
-
-            # Create a new possible point
-            location = GeoLocation(point=Point(long, lat))
-            self.potential_geo_locations.append(location)
-
-            # Remove from the locality string
-            self.locality_parts['locality'] = re.sub(regex, '', str(self.locality_parts['locality']))
-
-        # TODO see if it contains decimal degrees in the string itself
+        # Sometimes during the locality cleaning process we will have uncovered a lat/long if so add that
+        if 'lat' in self.locality_name.locality_parts and 'long' in self.locality_name.locality_parts:
+            self.potential_geographical_positions.append(GeographicalPosition(point=Point(self.locality_name.locality_parts['long'],
+                                                                        self.locality_name.locality_parts['lat'])))
 
         # Try and geolocate from our own database
 
         # Try and geolocate from google/other dbs
         self._geolocate_using_remote_db()
 
-        # TODO try and geolocate from other databases
-
-        # If we have some locations
-        # if locations:
-        #    self.locality_parts['georeferenced'] = GeometryCollection(locations).json
-        if self.potential_geo_locations:
-            return serialize('custom_geojson', self.potential_geo_locations, geometry_field='point')
+        # If we've managed to uncover anything then return it
+        if self.potential_geographical_positions:
+            self.potential_geographical_positions = serialize('custom_geojson', self.potential_geographical_positions, geometry_field='point')
 
     def _geolocate_using_remote_db(self):
         google_geolocator = GoogleV3()
         try:
-            if 'province' in self.locality_parts:
-                results = google_geolocator.geocode(query=self.locality_parts['locality'] + ', ' +
-                                                          self.locality_parts['province'],
+            if 'province' in self.locality_name.locality_parts:
+                results = google_geolocator.geocode(query=self.locality_name.locality_parts['locality'] + ', ' +
+                                                          self.locality_name.locality_parts['province'],
                                                     region='za')
             else:
-                results = google_geolocator.geocode(query=str(self.locality_parts['locality']), region='za')
+                results = google_geolocator.geocode(query=str(self.locality_name.locality_parts['locality']), region='za')
 
             # Has it actually managed to find coords beyond province level? and are we in the right country?
             country = ''
@@ -316,45 +372,13 @@ class LocalityName(models.Model):
                 long = results.raw['geometry']['location']['lng']
                 # We are finding the difference in x and y between a point (i.e., x degrees)
                 # self.notes = "Google maps API geolocates this as: " + results.raw['geometry']['location_type'] + \
-                #             " - distance from original qds = " + self._get_km_distance_from_two_points(self.lat, self.long)
+                # " - distance from original qds = " + self._get_km_distance_from_two_points(self.lat, self.long)
                 # TODO add in llres
 
-                location = GeoLocation(point=Point(long, lat), origin=GeoLocation.GOOGLE)
-                self.potential_geo_locations.append(location)
+                location = GeographicalPosition(point=Point(long, lat), origin=GeographicalPosition.GOOGLE)
+                self.potential_geographical_positions.append(location)
         except AttributeError as e:
-            print("Google maps could not find :" + str(self.locality_parts['locality']) + ' gives error : ' + str(sys.exc_info()))
+            print("Google maps could not find :" + str(self.locality_name.locality_parts['locality']) + ' gives error : ' + str(
+                sys.exc_info()))
         except:
             print("ANOTHER ERROR occurred when looking up in google " + str(sys.exc_info()))
-
-
-class LocalityDate(models.Model):
-    """
-    A locality might have several dates associated with it
-    """
-    locality_name = models.ForeignKey(LocalityName)
-    date = models.DateField(null=True, blank=True)
-
-
-class GeoReference(models.Model):
-    locality_name = models.ForeignKey(LocalityName, null=True, blank=True)
-    geo_location = models.ForeignKey(GeoLocation, null=True, blank=True)
-    user = models.ForeignKey(User)
-    group_id = models.TextField(max_length=50)
-    unique_id = models.TextField(max_length=50)
-    created_on = models.DateTimeField(auto_now_add=True)
-
-
-
-'''
-@receiver(post_init, sender=LocalityName)
-def post_init(sender, instance, **kwargs):
-    # Make a duplicate of the locality text before we do anything to it
-    instance.original_locality = instance.locality
-
-    # We are going to try and split it apart, so init an empty dict for the json field
-    instance.locality_parts = {}
-
-    # Removes the superfluous strings and standardises the language
-    instance._clean_locality()
-    instance._get_directions()
-    instance._set_feature_type()'''

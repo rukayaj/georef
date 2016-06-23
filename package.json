@@ -19,6 +19,8 @@
   "dependencies": {
     "bootpag": "^1.0.7",
     "bootstrap": "^3.3.6",
+    "datatables.net": "^1.10.12",
+    "datatables.net-bs": "^1.10.12",
     "handsontable": "^0.25.0",
     "jquery": "^2.2.4",
     "leaflet": "^0.7.7",

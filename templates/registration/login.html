@@ -1,0 +1,33 @@
+{% extends "website/_base.html" %}
+
+{% block content %}
+<h1>Login.</h1>
+
+{% if form.errors %}
+<p>Your username and password didn't match. Please try again.</p>
+{% endif %}
+
+{% if next %}
+    {% if user.is_authenticated %}
+    <p>Your account doesn't have access to this page. To proceed,
+    please login with an account that has access.</p>
+    {% endif %}
+{% endif %}
+
+<form method="post" action="{% url 'django.contrib.auth.views.login' %}">{% csrf_token %}
+  <div class="form-group">
+  {{ form.username.label_tag }}
+  {{ form.username }}
+  </div>
+  <div class="form-group">
+  {{ form.password.label_tag }}
+  {{ form.password }}
+  </div>
+  <button type="submit" class="btn btn-default">Login</button>
+  <input type="hidden" name="next" value="{{ next }}" />
+</form>
+<hr>
+{# Assumes you setup the password_reset view in your URLconf #}
+<p><a href="{% url 'password_reset' %}">Lost password?</a></p>
+
+{% endblock %}
