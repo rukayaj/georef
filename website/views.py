@@ -15,6 +15,7 @@ from django.core import serializers
 from django.forms.models import model_to_dict
 from django.views.generic import View
 from django.views.generic.detail import SingleObjectMixin, DetailView
+from website import forms
 
 
 input_columns = ['unique_id',
@@ -67,36 +68,75 @@ class GeoreferenceDetailView(DetailView):
     template_name = "website/georeference.html"  # Defaults to georeference_detail.html
     context_object_name = 'georeference'
 
-#def georeference(request):
-#    return render(request, 'website/georeference.html', {'georeferences': georeferences})
+    def get_context_data(self, **kwargs):
+        context = super(GeoreferenceDetailView, self).get_context_data(**kwargs)
+        context['feature_type_choices'] = models.GeographicalPosition.feature_type_choices
+        context['origin_choices'] = models.GeographicalPosition.origin_choices
+        context['georeference_form'] = forms.GeographicalPositionForm()
+        return context
 
 
-def set_georeference(request):
-    # We have to work from a georeference for this view
-    if 'georeference_id' not in request.POST:
-        return HttpResponse(status=403)
+def clean_locality(request, pk):
+    """Just refreshes the locality - for debugging"""
+    georeference = models.GeoReference.objects.get(pk=pk)
+    locality_name = models.LocalityName.objects.get(pk=georeference.locality_name.pk)
 
-    # Get the georeference that is being worked on
-    georeference = models.GeoReference.get(id=request.POST['georeference_id'])
+    # We are going to try and split it apart, so init an empty dict for the json field
+    locality_name.locality_parts = {'locality': locality_name.locality_name}
 
-    # It is a GeographicalPosition from our own database
-    if 'content[id]' in request.POST:
-        pass
+    # Removes the superfluous strings and standardises the language
+    locality_name._clean_locality()
+    locality_name._get_directions()
+    locality_name._set_feature_type()
+    locality_name._get_lat_long_dms()
+    locality_name._get_lat_long_dd()
 
-    # Or we have to construct a geographical position object
-    lat = request.POST['content[lat]']
-    long = request.POST['content[long]']
-    origin = request.POST['content[origin]']
-    buffer = request.POST['content[buffer]']
-    geographical_position = models.GeographicalPosition(point=Point(long, lat),
-                                                        origin=models.GeographicalPosition.INPUT,
-                                                        buffer=buffer)
-    geographical_position.save()
+    locality_name.save()
 
-    # Link to the georeference object i.e. it now registers that locality string has been georeferenced
-    georeference.geographical_position = geographical_position
+    return redirect('georeference', pk=pk)
+
+
+def auto_geolocate(request, pk):
+    georeference = models.GeoReference.objects.get(pk=pk)
+    georeference.auto_geolocate()
     georeference.save()
-    return redirect('index')
+
+    return redirect('georeference')
+
+
+def set_georeference(request, pk):
+    if request.is_ajax():
+        # We have to work from a georeference for this view
+        if 'georeference_id' not in request.POST:
+            return HttpResponse(status=403)
+
+        # Get the georeference that is being worked on
+        georeference = models.GeoReference.objects.get(pk=pk)
+
+        # It is a GeographicalPosition from our own database
+        if 'content[id]' in request.POST:
+            pass
+
+        # Or we have to construct a geographical position object
+        lat = float(request.POST['content[lat]'])
+        long = float(request.POST['content[long]'])
+        origin = request.POST['content[origin]']
+        buffer = request.POST['content[buffer]']
+        geographical_position = models.GeographicalPosition(point=Point(long, lat),
+                                                            origin=models.GeographicalPosition.INPUT,
+                                                            buffer=buffer)
+        geographical_position.save()
+
+        # Link to the georeference object i.e. it now registers that locality string has been georeferenced
+        georeference.geographical_position = geographical_position
+        georeference.save()
+
+        # Return success
+        return HttpResponse(status=204)
+
+
+def set_geographical_position(request, pk):
+    import pdb; pdb.set_trace()
 
 
 def process_locality(request):

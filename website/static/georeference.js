@@ -1,4 +1,11 @@
+  function georeferenceFunc(e) {
+      console.log('hello');
+      e.preventDefault();
+      return false;
+  }
 $(document).ready(function() {
+
+
   // Initialise map
   map = L.map('leaflet').setView([-29, 24.5], 5); // , {drawControl: true}
   L.tileLayer('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -24,13 +31,114 @@ $(document).ready(function() {
   });
   map.addControl(drawControl);
 
+  // Send info to get saved into the database
+  /*$('.georeference-submit').click(function(e) {
+    console.log('hello');
+    e.preventDefault();
+  });*/
+  $('.submit-form').submit(function(e) {
+    console.log('hello');
+    console.log($(this).attr('action'));
+    /*
+    $.ajax({
+      type: "POST",
+      url: $(this).attr('action'),
+      data: $(this).serialize(),
+      success: function(data) {
+        window.location = redirect_url;
+      }
+    });*/
+
+    //$.ajax({ type: 'POST', url: $(this).attr('action'), data: $(this).serialize(), success: function(data) { window.location = redirect_url; }});
+    console.log('hello');
+    e.preventDefault();
+  });
+
+  function createPopup(lat, long, buffer) {
+    var templateForm = $('.template-form');
+    latLong = layer.getLatLng();
+    $('.template-form h3 small').text(latLong.lat.toFixed(5) + ', ' + latLong.lng.toFixed(5));
+    $('.template-form input.lat').val(latLong.lat);
+    $('.template-form input.long').val(latLong.long);
+    var form = templateForm.clone();
+    form.removeClass('.template-form');
+    form.addClass('.submit-form');
+    return form;
+    //$('<input>').attr({ type: 'hidden', id: 'lat', name: 'lat', value: lat}).appendTo(form);
+    //$('<input>').attr({ type: 'hidden', id: 'long', name: 'long', value: long}).appendTo(form);
+    //$('<input>').attr({ type: 'text', id: 'buffer', name: 'buffer', value: buffer}).appendTo(form);
+  }
+
   // Let people create manual points
   map.on('draw:created', function (e) {
     var type = e.layerType,
       layer = e.layer;
 
     if (type === 'marker') {
-      layer.bindPopup('A popup!');
+      /*
+      // Add the popup
+      popupContent = $('<div>');
+
+      // Create the button for actually submitting it as georeferenced
+      var button = $('<button>').addClass('btn btn-warning btn-sm').html('Set as georeferenced point');
+
+      // At some point here we need to change it to dynamic input
+      popupContent.append($('<strong>').append('Map marker'));
+      popupContent.append($('<br>'));
+      button.attr('data-origin', 'INPUT');
+      console.log(e);
+      console.log(layer);
+      console.log();
+      // Add the coordinates
+      latLong = layer.getLatLng();
+      popupContent.append(latLong.lat.toFixed(5) + ', ' + latLong.lng.toFixed(5));
+      button.attr('data-lat', latLong.lat);
+      button.attr('data-long', latLong.lng);
+      popupContent.append('<br>Resolution confidence:');
+      var buffer = $('<input type="text" placeholder="E.g. 0.5">');
+
+
+      // Create the click function for the button
+      button.click(function() {
+        console.log($(this).data());
+        // Send info to get saved into the database
+        $.ajax({
+          url: georef_ajax_url,
+          method: "POST",
+          data: { 'content': $(this).data(), 'georeference_id': georeference_id, 'csrfmiddlewaretoken': csrf },
+          dataType: "json"
+        }).done(function(returned_data) {
+          window.location = redirect_url;
+        });
+      })
+
+      // Add button to popupContent, quite tricky to figure this out, see
+      // http://stackoverflow.com/questions/13698975/click-link-inside-leaflet-popup-and-do-javascript
+      popupContent.append($('<br>'));
+      popupContent = $(popupContent).append(button)[0];
+      layer.bindPopup(popupContent);
+      */
+
+      var latLong = layer.getLatLng();
+      $('.template-form h3 small').text(latLong.lat.toFixed(5) + ', ' + latLong.lng.toFixed(5));
+      $('.template-form input.lat').val(latLong.lat);
+      $('.template-form input.long').val(latLong.long);
+      var form = $('.template-form').clone();
+
+      form.removeClass('template-form');
+      form.addClass('georef-form');
+      form.show();
+
+      layer.bindPopup(form.prop('outerHTML')).openPopup();
+      console.log('bound');
+      console.log($('.georef-form'))
+      $('.georef-form').submit(function(e) {
+        console.log('hellwwo');
+        e.preventDefault();
+        return false;
+      });
+
+      console.log($('.georef-form'))
     }
 
     editableLayers.addLayer(layer);
@@ -57,11 +165,11 @@ $(document).ready(function() {
           popupContent = $('<div>');
 
           // Create the button for actually submitting it as georeferenced
-          var button = $('<button>').addClass('btn btn-warning btn-sm btn-georeference').html('Set as georeferenced point');
+          var button = $('<button>').addClass('btn btn-warning btn-sm').html('Set as georeferenced point');
 
           // Add the origin/georeferencing source
           popupContent.append($('<strong>').append(feature.properties.origin));
-          button.attr('data-source', feature.properties.origin);
+          button.attr('data-origin', feature.properties.origin);
 
           // Add the coordinates
           popupContent.append($('<br>'));
@@ -75,7 +183,7 @@ $(document).ready(function() {
           if(feature.properties.buffer) {
               popupContent.append($('<br>'));
               popupContent.append('Resolution confidence: ' + feature.properties.buffer + 'm');
-              button.attr('data-resolution', feature.properties.buffer);
+              button.attr('data-buffer', feature.properties.buffer);
 
               // TODO else they must set their own resolution confidence
 
@@ -87,6 +195,9 @@ $(document).ready(function() {
                   }).addTo(map);
               });
           }
+          else {
+            popupContent.append('<br>Resolution confidence: <input type="text" placeholder="E.g. 500m"><br>');
+          }
 
           // Create the click function for the button
           button.click(function() {
@@ -97,12 +208,12 @@ $(document).ready(function() {
             console.log($(this).data());
             // Send info to get saved into the database
             $.ajax({
-              url: set_georef_ajax_url,
+              url: georef_ajax_url,
               method: "POST",
               data: { 'content': $(this).data(), 'georeference_id': georeference_id, 'csrfmiddlewaretoken': csrf },
               dataType: "json"
             }).done(function(returned_data) {
-              console.log(returned_data);
+              window.location = redirect_url;
             });
           })
 

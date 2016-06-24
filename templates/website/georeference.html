@@ -1,14 +1,12 @@
 {% extends "website/_base.html" %}
 {% load static %}
+{% load bootstrap3 %}
 
 {% block css %}
 <link rel="stylesheet" href="{% static 'leaflet/dist/leaflet.css' %}">
 <link rel="stylesheet" href="{% static 'leaflet-draw/dist/leaflet.draw.css' %}">
 <link rel="stylesheet" href="{% static 'leaflet-measure/dist/leaflet-measure.css' %}">
 <link rel="stylesheet" href="{% static 'leafletmeasurecontrol/leaflet.measurecontrol.css' %}">
-</head>
-<body>
-  <script src="http://cdn.leafletjs.com/leaflet-0.7.3/leaflet.js"></script>
 {% endblock css %}
 
 {% block heading %}
@@ -17,7 +15,7 @@
     Back
   </a>
   Georeference locality ID {{ georeference.unique_id }}
-  {% endblock %}
+{% endblock %}
 
 {% block content %}
 <h2>
@@ -27,8 +25,14 @@
 </h2>
 <hr>
 <h3>Locality parts</h3>
-<div class="well"><strong>The system attempts to clean up the locality name and to recognise distances,
-bearings, etc and apply them to the map. Listed below are the different parts of the locality name, split up.</strong></div>
+<div class="well">
+  <p>The system attempts to clean up the locality name and to recognise distances,
+bearings, etc and apply them to the map. Listed below are the different parts of the locality name, split up.</p>
+  <p>The system then checks several geo databases to try and automatically geolocate the locality name.
+<a class="btn btn-default" role="button" href="{% url 'auto_geolocate' georeference.id %}">Repeat auto-geolocate process <span class="glyphicon glyphicon-repeat" aria-hidden="true"></span></a>
+  <a class="btn btn-default" role="button" href="{% url 'clean_locality' georeference.id %}">Clean locality <span class="glyphicon glyphicon-repeat" aria-hidden="true"></span></a>
+  </p>
+</div>
 <table class="table table-striped">
   <thead>
     <tr>
@@ -47,6 +51,60 @@ bearings, etc and apply them to the map. Listed below are the different parts of
 </table>
 <hr>
 <div id="leaflet" style="height: 400px"></div>
+
+<form style="display: none;" class="template-form" action="{% url 'set_geographical_position' georeference.id %}">{% csrf_token %}
+    <h3>Map marker <small></small></h3>
+    {% for field in georeference_form %}
+      {% if field.name == 'buffer' %}
+        {% bootstrap_field field addon_after="km" %}
+      {% else %}
+        {% bootstrap_field field %}
+      {% endif %}
+    {% endfor %}
+    {% buttons %}
+        <button type="submit" class="btn btn-warning">
+            {% bootstrap_icon "ok" %} Set as georeferenced point
+        </button>
+    {% endbuttons %}
+</form>
+
+<!-- This could be made a django form
+<form style="overflow: auto;" class="template-form" action="{% url 'set_geographical_position' georeference.id %}">{% csrf_token %}
+  <h3>Map marker <small></small></h3>
+  <input type="hidden" class="form-control" name="georeference_id" value="{{ georeference.id }}">
+  <input type="hidden" class="form-control" name="lat" class="lat">
+  <input type="hidden" class="form-control" name="long" class="long">
+  <div class="form-group">
+    <label for="bufferInput" class="control-label" aria-describedby="uncertaintyHelpBlock">Uncertainty</label>
+    <div class="input-group">
+      <input type="text" class="form-control" id="bufferInput" placeholder="E.g. 0.5">
+      <div class="input-group-addon">km</div>
+    </div>
+  </div>
+  <div class="form-group">
+    <label for="featureTypeInput" class="control-label">Feature type</label>
+    <select class="form-control" id="featureTypeInput" aria-describedby="featureHelpBlock">
+      {% for key, item in feature_type_choices %}
+      <option value="{{ key }}">{{ item }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-group">
+    <label for="sourceInput" class="control-label">Source</label>
+    <select class="form-control" id="sourceInput" aria-describedby="sourceHelpBlock">
+      {% for key, item in origin_choices %}
+      <option value="{{ key }}">{{ item }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="form-group">
+    <label for="notesInput" class="control-label">Notes</label>
+    <input type="text" id="notesInput" class="form-control" placeholder="Enter any helpful notes">
+  </div>
+  <div class="form-group">
+    <input type="submit" class="btn btn-warning georeference-submit" value="Set as georeferenced point">
+  </div>
+</form> -->
 {% endblock content %}
 
 {% block js %}
@@ -58,7 +116,8 @@ bearings, etc and apply them to the map. Listed below are the different parts of
 <script src="{% static 'leafletmeasurecontrol/leaflet.measurecontrol.js' %}"></script>
 <script>
   var potential_geographical_positions = $.parseJSON('{{ georeference.potential_geographical_positions|safe }}');
-  set_georef_ajax_url = "{% url 'set_georeference' georeference.id %}";
+  var georef_ajax_url = "{% url 'set_georeference' georeference.id %}";
+  var redirect_url = "{% url 'index' %}";
   var georeference_id = '{{ georeference.id }}';
   csrf = '{{ csrf_token }}';
 </script>
