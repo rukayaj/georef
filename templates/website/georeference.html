@@ -27,12 +27,10 @@
 <h3>Locality parts</h3>
 <div class="well">
   <p>The system attempts to clean up the locality name and to recognise distances,
-bearings, etc and apply them to the map. Listed below are the different parts of the locality name, split up.</p>
-  <p>The system then checks several geo databases to try and automatically geolocate the locality name.
-<a class="btn btn-default" role="button" href="{% url 'auto_geolocate' georeference.id %}">Repeat auto-geolocate process <span class="glyphicon glyphicon-repeat" aria-hidden="true"></span></a>
+bearings, etc and apply them to the map. Listed below are the different parts of the locality name, split up. The system then checks several geo databases to try and automatically geolocate the locality name.
+  <a class="btn btn-default" role="button" href="{% url 'auto_geolocate' georeference.id %}">Repeat auto-geolocate process <span class="glyphicon glyphicon-repeat" aria-hidden="true"></span></a>
   <a class="btn btn-default" role="button" href="{% url 'clean_locality' georeference.id %}">Clean locality <span class="glyphicon glyphicon-repeat" aria-hidden="true"></span></a>
   </p>
-</div>
 <table class="table table-striped">
   <thead>
     <tr>
@@ -49,12 +47,21 @@ bearings, etc and apply them to the map. Listed below are the different parts of
     </tr>
   </tbody>
 </table>
-<hr>
+</div>
 <div id="leaflet" style="height: 400px"></div>
+<hr>
+<form method="post" action="">{% csrf_token %}
+    {% bootstrap_form form %}
+    {% buttons %}
+        <button type="submit" class="btn btn-primary">
+            {% bootstrap_icon "comment" %} Save notes
+        </button>
+    {% endbuttons %}
+</form>
 
-<form style="display: none;" class="template-form" action="{% url 'set_geographical_position' georeference.id %}">{% csrf_token %}
-    <h3>Map marker <small></small></h3>
-    {% for field in georeference_form %}
+<form style="display: none;" class="template-form" method="post" action="{% url 'set_geographical_position' georeference.id %}">{% csrf_token %}
+    <h3><span class="form-heading">Map marker</span> <small class="form-coords"></small></h3>
+    {% for field in geographical_position_form %}
       {% if field.name == 'buffer' %}
         {% bootstrap_field field addon_after="km" %}
       {% else %}
@@ -62,49 +69,11 @@ bearings, etc and apply them to the map. Listed below are the different parts of
       {% endif %}
     {% endfor %}
     {% buttons %}
-        <button type="submit" class="btn btn-warning">
+        <button type="submit" class="btn btn-warning submit-georeference" onClick="enableSelects();">
             {% bootstrap_icon "ok" %} Set as georeferenced point
         </button>
     {% endbuttons %}
 </form>
-
-<!-- This could be made a django form
-<form style="overflow: auto;" class="template-form" action="{% url 'set_geographical_position' georeference.id %}">{% csrf_token %}
-  <h3>Map marker <small></small></h3>
-  <input type="hidden" class="form-control" name="georeference_id" value="{{ georeference.id }}">
-  <input type="hidden" class="form-control" name="lat" class="lat">
-  <input type="hidden" class="form-control" name="long" class="long">
-  <div class="form-group">
-    <label for="bufferInput" class="control-label" aria-describedby="uncertaintyHelpBlock">Uncertainty</label>
-    <div class="input-group">
-      <input type="text" class="form-control" id="bufferInput" placeholder="E.g. 0.5">
-      <div class="input-group-addon">km</div>
-    </div>
-  </div>
-  <div class="form-group">
-    <label for="featureTypeInput" class="control-label">Feature type</label>
-    <select class="form-control" id="featureTypeInput" aria-describedby="featureHelpBlock">
-      {% for key, item in feature_type_choices %}
-      <option value="{{ key }}">{{ item }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="form-group">
-    <label for="sourceInput" class="control-label">Source</label>
-    <select class="form-control" id="sourceInput" aria-describedby="sourceHelpBlock">
-      {% for key, item in origin_choices %}
-      <option value="{{ key }}">{{ item }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="form-group">
-    <label for="notesInput" class="control-label">Notes</label>
-    <input type="text" id="notesInput" class="form-control" placeholder="Enter any helpful notes">
-  </div>
-  <div class="form-group">
-    <input type="submit" class="btn btn-warning georeference-submit" value="Set as georeferenced point">
-  </div>
-</form> -->
 {% endblock content %}
 
 {% block js %}
@@ -116,10 +85,14 @@ bearings, etc and apply them to the map. Listed below are the different parts of
 <script src="{% static 'leafletmeasurecontrol/leaflet.measurecontrol.js' %}"></script>
 <script>
   var potential_geographical_positions = $.parseJSON('{{ georeference.potential_geographical_positions|safe }}');
-  var georef_ajax_url = "{% url 'set_georeference' georeference.id %}";
   var redirect_url = "{% url 'index' %}";
   var georeference_id = '{{ georeference.id }}';
   csrf = '{{ csrf_token }}';
+
+  // Because disabled values do not submit, we have to remove all of the disableds from the select elements
+  function enableSelects() {
+    $('select').attr('disabled', false);
+  }
 </script>
 <script src="{% static 'georeference.js' %}"></script>
 {% endblock js %}

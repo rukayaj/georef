@@ -13,7 +13,7 @@ from django.shortcuts import redirect
 import json
 from django.core import serializers
 from django.forms.models import model_to_dict
-from django.views.generic import View
+from django.views.generic import View, UpdateView
 from django.views.generic.detail import SingleObjectMixin, DetailView
 from website import forms
 
@@ -72,9 +72,21 @@ class GeoreferenceDetailView(DetailView):
         context = super(GeoreferenceDetailView, self).get_context_data(**kwargs)
         context['feature_type_choices'] = models.GeographicalPosition.feature_type_choices
         context['origin_choices'] = models.GeographicalPosition.origin_choices
-        context['georeference_form'] = forms.GeographicalPositionForm()
+        context['geographical_position_form'] = forms.GeographicalPositionForm()
         return context
 
+
+class GeoReferenceUpdateView(UpdateView):
+    model = models.GeoReference
+    template_name = 'website/georeference.html'
+    fields = ['notes']
+
+    def get_context_data(self, **kwargs):
+        context = super(GeoReferenceUpdateView, self).get_context_data(**kwargs)
+        context['feature_type_choices'] = models.GeographicalPosition.feature_type_choices
+        context['origin_choices'] = models.GeographicalPosition.origin_choices
+        context['geographical_position_form'] = forms.GeographicalPositionForm()
+        return context
 
 def clean_locality(request, pk):
     """Just refreshes the locality - for debugging"""
@@ -104,39 +116,33 @@ def auto_geolocate(request, pk):
     return redirect('georeference')
 
 
-def set_georeference(request, pk):
-    if request.is_ajax():
-        # We have to work from a georeference for this view
-        if 'georeference_id' not in request.POST:
-            return HttpResponse(status=403)
-
+def set_geographical_position(request, pk):
+    if request.POST:
         # Get the georeference that is being worked on
         georeference = models.GeoReference.objects.get(pk=pk)
 
-        # It is a GeographicalPosition from our own database
-        if 'content[id]' in request.POST:
-            pass
+        # Create the input geographical position from the post data
+        geographical_position = forms.GeographicalPositionForm(request.POST)
 
-        # Or we have to construct a geographical position object
-        lat = float(request.POST['content[lat]'])
-        long = float(request.POST['content[long]'])
-        origin = request.POST['content[origin]']
-        buffer = request.POST['content[buffer]']
-        geographical_position = models.GeographicalPosition(point=Point(long, lat),
-                                                            origin=models.GeographicalPosition.INPUT,
-                                                            buffer=buffer)
-        geographical_position.save()
+        # For reasons best known to itself Django likes to call is_valid just once on this thing before working
+        # Seriously, call is_valid first time and it gives an attribute error, the second time it returns true/false
+        # Wtf.
+        try:
+            print(geographical_position.is_valid())
+        except AttributeError:
+            print(geographical_position.is_valid())
 
-        # Link to the georeference object i.e. it now registers that locality string has been georeferenced
-        georeference.geographical_position = geographical_position
-        georeference.save()
+        # After that bit of insanity we can get back to the normal world
+        if geographical_position.is_valid():
+            geographical_position = geographical_position.save()
 
-        # Return success
-        return HttpResponse(status=204)
+            # Add it to our georeference and save
+            georeference.geographical_position = geographical_position
+            georeference.save()
+        else:
+            import pdb; pdb.set_trace()
 
-
-def set_geographical_position(request, pk):
-    import pdb; pdb.set_trace()
+    return redirect('index')
 
 
 def process_locality(request):

@@ -25,13 +25,13 @@ urlpatterns = [
     url(r'^$', views.index, name='index'),
     url(r'^completed/$', views.completed, name='completed'),
     url(r'^add/bulk/', views.add_bulk, name='add_bulk'),
-    url(r'^georeference/(?P<pk>[0-9]+)/$', views.GeoreferenceDetailView.as_view(), name='georeference'),
+    # url(r'^georeference/(?P<pk>[0-9]+)/$', views.GeoreferenceDetailView.as_view(), name='georeference'),
+    url(r'^georeference/(?P<pk>[0-9]+)/$', views.GeoReferenceUpdateView.as_view(), name='georeference'),
     url(r'^georeference/(?P<pk>[0-9]+)/auto_geolocate/', views.auto_geolocate, name='auto_geolocate'),
 
     url(r'^process$', views.process, name='process'),
     url(r'^process-locality/', views.process_locality, name='process_locality'),
-    url(r'^set-georeference/(?P<pk>[0-9]+)/', views.set_georeference, name='set_georeference'),
-    url(r'^set-setgeo/(?P<pk>[0-9]+)/', views.set_geographical_position, name='set_geographical_position'),
+    url(r'^set-geographical-position/(?P<pk>[0-9]+)/', views.set_geographical_position, name='set_geographical_position'),
 
     url(r'^delete/(?P<pk>[0-9]+)/$', DeleteGeoreference.as_view(), name='delete'),
 

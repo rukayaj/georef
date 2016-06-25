@@ -319,10 +319,13 @@ class GeoReference(models.Model):
     group_id = models.CharField(max_length=50)
     unique_id = models.CharField(max_length=50)
     created_on = models.DateTimeField(auto_now_add=True)
-    notes = models.TextField()
+    notes = models.TextField(max_length=50)
 
     # Potential locations - this is just a load of geojson
     potential_geographical_positions = JSONField(null=True, blank=True)
+
+    def get_absolute_url(self):
+        return reverse('georeference', args=[self.id])
 
     def auto_geolocate(self):
         # Initialize as a blank list if we don't start with any potential geo locations

@@ -10,3 +10,10 @@ class GeographicalPositionForm(ModelForm):
         widgets = {
             'point': forms.HiddenInput(),
         }
+
+
+class GeoReferenceNotesForm(ModelForm):
+    class Meta:
+        model = models.GeoReference
+        fields = ['notes']
+
