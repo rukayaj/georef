@@ -44,6 +44,38 @@ llres_mapping = {
 def add_bulk(request):
     return render(request, 'website/add_bulk.html', {'input_columns': json.dumps(input_columns)})
 
+@login_required
+def import_shp(request):
+    from django.contrib.gis.gdal import DataSource
+    from django.contrib.gis.utils import LayerMapping
+    #ds = DataSource('C:\\Users\\JohaadienR\\Documents\\Projects\\python-sites\\georef-data-sources\\rqis_rivers\\wriall500.shp')
+    file_loc = 'C:\\Users\\JohaadienR\\Documents\\Projects\\python-sites\\georef-data-sources\\roads\\South Africa_Roads.shp'
+    ds = DataSource(file_loc)
+    layer = ds[0]
+    print(layer.srs)
+
+    for road in layer:
+        ln = models.LocalityName(locality_name=str(road['ROADNO']))
+        ln.save()
+        print('saving locality name')
+        gp = models.GeographicalPosition(line=road.geom.geos,
+                                         feature_type=models.GeographicalPosition.ROAD,
+                                         origin=models.GeographicalPosition.ROADS)
+        gp.save()
+        print('saving geo positoin')
+        gr = models.GeoReference(locality_name=ln, geographical_position=gp)
+        gr.save()
+        print('saving geo ref')
+    '''
+    mapping = {
+        'name': 'ROADNO',  # The 'name' model field maps to the 'str' layer field.
+        'line': 'LINESTRING',  # For geometry fields use OGC name.
+        'feature_type': models.GeographicalPosition.ROAD,
+        'origin': models.GeographicalPosition.ROADS
+    }
+    lm = LayerMapping(models.GeographicalPosition, file_loc, mapping)
+    lm.save(verbose=True)  # Save the layermap, imports the data.'''
+
 
 @login_required
 def index(request):

@@ -142,3 +142,9 @@ STATICFILES_FINDERS = (
 SERIALIZATION_MODULES = {
     "custom_geojson": "website.geojson_serializer",
 }
+
+# Try and overwriting with any local settings e.g. database variables 
+try:
+    from georef.local_settings import *
+except ImportError:
+    pass

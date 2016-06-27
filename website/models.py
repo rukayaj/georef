@@ -8,34 +8,40 @@ import re
 import sys
 from enum import Enum
 from django.contrib.postgres.fields import IntegerRangeField, ArrayField
-from django.contrib.gis.geos import Point, GeometryCollection
+from django.contrib.gis.geos import Point, GeometryCollection, LineString
 # Google maps geolocating API - https://github.com/geopy/geopy
-from geopy.geocoders import GoogleV3
+from geopy.geocoders import GoogleV3, GeocodeFarm, Nominatim
 from django.db.models.signals import post_init
 from django.dispatch import receiver
 from django.core.serializers import serialize
 from django.contrib.auth.models import User
 from djgeojson.serializers import Deserializer as GeoJSONDeserializer
+from geopy.distance import distance, VincentyDistance
 
 
 class GeographicalPosition(models.Model):
     # Geographical location that has either a point or a polygon
     point = models.PointField(null=True, blank=True)
     polygon = models.PolygonField(null=True, blank=True)
+    line = models.LineStringField(null=True, blank=True)
 
     # The type of location
     TOWN = 'T'
+    ROAD = 'R'
     MOUNTAIN = 'M'
     RAILWAY = 'R'
     FARM = 'F'
     PARK = 'P'
+    BETWEEN = 'B'
     UNKNOWN = 'U'
     feature_type_choices = (
-        (TOWN, 'town'),
-        (MOUNTAIN, 'mountain'),
-        (RAILWAY, 'railway'),
-        (FARM, 'farm'),
-        (PARK, 'park'),
+        (TOWN, 'Town'),
+        (ROAD, 'Road'),
+        (MOUNTAIN, 'Mountain'),
+        (RAILWAY, 'Railway'),
+        (FARM, 'Farm'),
+        (PARK, 'Park'),
+        (BETWEEN, 'between two places'),
         (UNKNOWN, 'unknown')
     )
     feature_type = models.CharField(max_length=1, choices=feature_type_choices, default=UNKNOWN)
@@ -48,13 +54,19 @@ class GeographicalPosition(models.Model):
     # Origin of the point/polygon
     USER = 'US'
     GOOGLE = 'GO'
+    GEOCODEFARM = 'GE'
     INPUT = 'IN'
     LOCALITY_STRING = 'LS'
+    RQIS = 'RQ'
+    ROADS = 'RO'
     UNKNOWN = 'UN'
     origin_choices = (
         (USER, 'User'),
         (GOOGLE, 'Google'),
+        (GEOCODEFARM, 'Geocode farm'),
         (INPUT, 'Input'),
+        (RQIS, 'South Africa 1:500 000 Rivers'),
+        (ROADS, 'Official list of roads'),
         (UNKNOWN, 'Unknown'),
         (LOCALITY_STRING, 'Derived from locality string')
     )
@@ -91,6 +103,8 @@ class LocalityName(models.Model):
         self._get_directions()
         self._get_nearby()
         self._set_feature_type()
+
+        self.locality_parts['locality'] = self.clean_string(self.locality_parts['locality'])
 
     def _get_lat_long_dms(self):
         # E.g. 29°58'51.5's 17°33'04.9'e
@@ -221,6 +235,7 @@ class LocalityName(models.Model):
         s = re.sub(r'\s*;\s*;+\s*', '', s)
         s = re.sub(r'[\.,;:]$', '', s)
         s = re.sub(r'^[\.,;:]', '', s)
+        s = re.sub(r'[,.:;]{2,}', ',', s)
         return s.strip()
 
     def _get_directions(self):
@@ -267,10 +282,11 @@ class LocalityName(models.Model):
 
         if 'place_measured_from' in self.locality_parts:
             # Look for bearings, keep track of the ones we need to remove and get rid of them afterwards
-            bearings_matches = {'south': ['south', 's', 'se', 'sw', 'south-east', 'southeast', 'south-west', 'southwest'],
-                                'north': ['north', 'n', 'ne', 'nw', 'north-east', 'northeast', 'north-west', 'northwest'],
-                                'east': ['east', 'e', 'se', 'ne', 'south-east', 'southeast', 'north-east', 'northeast'],
-                                'west': ['west', 'w', 'sw', 'nw', 'south-west', 'southwest', 'north-west', 'northwest']}
+            bearings_matches = {
+                'south': ['south', 's', 'se', 'sw', 'south-east', 'southeast', 'south-west', 'southwest'],
+                'north': ['north', 'n', 'ne', 'nw', 'north-east', 'northeast', 'north-west', 'northwest'],
+                'east': ['east', 'e', 'se', 'ne', 'south-east', 'southeast', 'north-east', 'northeast'],
+                'west': ['west', 'w', 'sw', 'nw', 'south-west', 'southwest', 'north-west', 'northwest']}
 
             self.locality_parts['bearings'] = []
             strings_to_remove = set()  # apparently keeps unique values only
@@ -290,7 +306,8 @@ class LocalityName(models.Model):
 
             # Remove all of the applicable bearings
             for regex in strings_to_remove:
-                self.locality_parts['place_measured_from'] = re.sub(regex, '', self.locality_parts['place_measured_from'])
+                self.locality_parts['place_measured_from'] = re.sub(regex, '',
+                                                                    self.locality_parts['place_measured_from'])
 
             # Now we might have 6km from cape town NE towards Worcester
             from_regex = r'(^|\s+)(of|fro?m|van)'
@@ -302,7 +319,8 @@ class LocalityName(models.Model):
 
             # We might also have just worcestor, 6km NE from cape town
             regex = r'\s+(of|fro?m|van)\s+'
-            self.locality_parts['place_measured_from'] = re.sub(from_regex, '', self.locality_parts['place_measured_from'])
+            self.locality_parts['place_measured_from'] = re.sub(from_regex, '',
+                                                                self.locality_parts['place_measured_from'])
 
     def _get_nearby(self):
         regex = '\s+(between)(.+?)(and|&)([^\.]+)'
@@ -353,6 +371,7 @@ class LocalityName(models.Model):
 def post_init(sender, instance, **kwargs):
     instance.clean_locality()
 
+
 class LocalityDate(models.Model):
     """
     A locality might have several dates associated with it
@@ -364,7 +383,7 @@ class LocalityDate(models.Model):
 class GeoReference(models.Model):
     locality_name = models.ForeignKey(LocalityName)
     geographical_position = models.ForeignKey(GeographicalPosition, null=True, blank=True)
-    user = models.ForeignKey(User)
+    user = models.ForeignKey(User, null=True, blank=True)
     group_id = models.CharField(max_length=50)
     unique_id = models.CharField(max_length=50)
     created_on = models.DateTimeField(auto_now_add=True)
@@ -391,30 +410,96 @@ class GeoReference(models.Model):
 
         # Sometimes during the locality cleaning process we will have uncovered a lat/long if so add that
         if 'lat' in self.locality_name.locality_parts and 'long' in self.locality_name.locality_parts:
-            self.potential_geographical_positions.append(GeographicalPosition(point=Point(self.locality_name.locality_parts['long'],
-                                                                                          self.locality_name.locality_parts['lat']),
-                                                                              origin=GeographicalPosition.LOCALITY_STRING))
+            self.potential_geographical_positions.append(
+                GeographicalPosition(point=Point(self.locality_name.locality_parts['long'],
+                                                 self.locality_name.locality_parts['lat']),
+                                     origin=GeographicalPosition.LOCALITY_STRING))
 
         # Try and geolocate from our own database
 
-        # Try and geolocate from google/other dbs
-        self._geolocate_using_remote_db()
+        # Geolocating from remote db, format string accordingly
+        if 'province' in self.locality_name.locality_parts:
+            string = self.locality_name.locality_parts['locality'] + ', ' + self.locality_name.locality_parts[
+                'province']
+        else:
+            string = self.locality_name.locality_parts['locality']
+
+        # Google
+        self.geolocate_google(string)
+
+        # Geocodefarm does not allow to restrict to country, so add it to string
+        self._geolocate_geocode_farm(string + ', South Africa')
+        self._geolocate_nominatim(string + ', South Africa')
+
+        # Ok now if we have between then get the midpoint between those two points
+        if 'between' in self.locality_name.locality_parts:
+            geo_a = self.geolocate_google(self.locality_name.locality_parts['between'][0], append=False)
+            geo_b = self.geolocate_google(self.locality_name.locality_parts['between'][1], append=False)
+            line = LineString(geo_a.point, geo_b.point)
+            self.potential_geographical_positions.append(GeographicalPosition(point=line.centroid,
+                                                                              origin=GeographicalPosition.LOCALITY_STRING,
+                                                                              feature_type=GeographicalPosition.BETWEEN))
 
         # If we have multiple results with the same (roughly) point we need to make it just 1 point to display on map?
-
+        import pdb; pdb.set_trace()
         # If we've managed to uncover anything then return it
         if self.potential_geographical_positions:
-            self.potential_geographical_positions = serialize('custom_geojson', self.potential_geographical_positions, geometry_field='point')
+            self.potential_geographical_positions = serialize('custom_geojson', self.potential_geographical_positions,
+                                                              geometry_field='point')
 
-    def _geolocate_using_remote_db(self):
-        google_geolocator = GoogleV3()
-        try:
-            if 'province' in self.locality_name.locality_parts:
-                results = google_geolocator.geocode(query=self.locality_name.locality_parts['locality'] + ', ' +
-                                                          self.locality_name.locality_parts['province'],
-                                                    region='za')
+    def _apply_directions(self, directions):
+        for bearing in directions['bearings']:
+            # Convert the bearing into something VincentyDistance understands:
+            if bearing == 'south':
+                bearing_degrees = 180
+            elif bearing == 'north':
+                bearing_degrees = 0
+            elif bearing == 'east':
+                bearing_degrees = 90
             else:
-                results = google_geolocator.geocode(query=str(self.locality_name.locality_parts['locality']), region='za')
+                bearing_degrees = 270
+
+            # Define starting point.
+            start = Point(self.lat, self.long)
+
+            # Use the `destination` method with a bearing of 0 degrees (which is north)
+            # in order to go from point `start` 1 km to north.
+            destination = VincentyDistance(kilometers=directions['distance']).destination(start, bearing_degrees)
+            self.lat = destination.latitude
+            self.long = destination.longitude
+        return True
+
+    def _geolocate_nominatim(self, string, append=True):
+        g = Nominatim(timeout=30)
+        try:
+            results = g.geocode(query=string, exactly_one=True)
+            if results and results[0]:
+                gp = GeographicalPosition(point=Point(results.latitude, results.longitude), origin=GeographicalPosition.GEOCODEFARM)
+                # Doesn't seem to throw an error if it doesn't find anything?
+                if append:
+                    self.potential_geographical_positions.append(gp)
+                return gp
+        except:
+            print("Nominatim - error: " + str(sys.exc_info()))
+
+    def _geolocate_geocode_farm(self, string, append=True):
+        g = GeocodeFarm(timeout=30)
+        try:
+            results = g.geocode(query=string, exactly_one=True)
+            coords = results['geocoding_results']['RESULTS'][0].coordinates
+            gp = GeographicalPosition(point=Point(coords['longitude'], coords['latitude']), origin=GeographicalPosition.GEOCODEFARM)
+            if append:
+                self.potential_geographical_positions.append(gp)
+            return gp
+        except AttributeError as e:
+            print("Geocodefarm - not found: " + string + ' gives error : ' + str(sys.exc_info()))
+        except:
+            print("Geocodefarm - error: " + str(sys.exc_info()))
+
+    def geolocate_google(self, string, append=True):
+        g = GoogleV3()
+        try:
+            results = g.geocode(string, region='za')
 
             # Has it actually managed to find coords beyond province level? and are we in the right country?
             country = ''
@@ -424,17 +509,12 @@ class GeoReference(models.Model):
 
             # if str(results) != self.locality_parts['province'] + ", South Africa" and country == 'ZA':
             if "South Africa" and country == 'ZA':
-                lat = results.raw['geometry']['location']['lat']
-                long = results.raw['geometry']['location']['lng']
-                # We are finding the difference in x and y between a point (i.e., x degrees)
-                # self.notes = "Google maps API geolocates this as: " + results.raw['geometry']['location_type'] + \
-                # " - distance from original qds = " + self._get_km_distance_from_two_points(self.lat, self.long)
-                # TODO add in llres
-
-                location = GeographicalPosition(point=Point(long, lat), origin=GeographicalPosition.GOOGLE)
-                self.potential_geographical_positions.append(location)
+                coords = results.raw['geometry']['location']
+                gp = GeographicalPosition(point=Point(coords['lng'], coords['lat']), origin=GeographicalPosition.GOOGLE)
+                if append:
+                    self.potential_geographical_positions.append(gp)
+                return gp
         except AttributeError as e:
-            print("Google maps could not find :" + str(self.locality_name.locality_parts['locality']) + ' gives error : ' + str(
-                sys.exc_info()))
+            print("Google - not found: " + string + ' gives error : ' + str(sys.exc_info()))
         except:
-            print("ANOTHER ERROR occurred when looking up in google " + str(sys.exc_info()))
+            print("Google - error: " + str(sys.exc_info()))

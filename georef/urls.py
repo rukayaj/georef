@@ -35,6 +35,7 @@ urlpatterns = [
 
     # Just for debugging
     url(r'^georeference/(?P<pk>[0-9]+)/clean_locality/', views.clean_locality, name='clean_locality'),
+    url(r'^import/', views.import_shp, name='import_shp'),
 
     # Accounts
     url('^accounts/', include('django.contrib.auth.urls')),

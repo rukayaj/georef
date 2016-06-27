@@ -77,3 +77,6 @@ eia/settings_production.py
 # npm
 node_modules
 node_modules/*
+
+# local settings
+georef/local_settings.py
