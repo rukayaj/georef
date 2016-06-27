@@ -102,6 +102,10 @@ class GeoReferenceCreateView(CreateView):
     model = models.GeoReference
     template_name = 'website/single.html'
 
+@login_required
+def qc(request):
+    georeferences = models.GeoReference.objects.filter(created=)
+
 
 class GeoReferenceUpdateView(UpdateView):
     model = models.GeoReference

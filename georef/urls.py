@@ -24,6 +24,7 @@ urlpatterns = [
     url(r'^admin/', admin.site.urls),
     url(r'^$', views.index, name='index'),
     url(r'^completed/$', views.completed, name='completed'),
+    url(r'^qc/$', views.qc, name='qc'),
     url(r'^add/bulk/', views.add_bulk, name='add_bulk'),
     url(r'^georeference/(?P<pk>[0-9]+)/$', views.GeoReferenceUpdateView.as_view(), name='georeference'),
     url(r'^georeference/(?P<pk>[0-9]+)/auto_geolocate/', views.auto_geolocate, name='auto_geolocate'),
