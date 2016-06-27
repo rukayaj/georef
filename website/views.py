@@ -104,7 +104,10 @@ class GeoReferenceCreateView(CreateView):
 
 @login_required
 def qc(request):
-    georeferences = models.GeoReference.objects.filter(created=)
+    # Automatically shown all done this month
+    georeferences = models.GeoReference.objects.filter(created_on__year=datetime.date.today().year,
+                                                       created_on__month=datetime.date.today().month)
+    return render(request, 'website/index.html', {'georeferences': georeferences})
 
 
 class GeoReferenceUpdateView(UpdateView):
