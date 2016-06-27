@@ -1,5 +1,11 @@
 $(document).ready(function() {
+  // An easy hacky way to make the textarea smaller
   $('textarea').attr('rows', 3);
+
+  // Enable tooltips
+  $(function () {
+    $('[data-toggle="tooltip"]').tooltip()
+  })
 
   // Initialise map
   map = L.map('leaflet').setView([-29, 24.5], 5); // , {drawControl: true}

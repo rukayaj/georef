@@ -5,13 +5,13 @@
 <link rel="stylesheet" media="screen" href="{% static 'datatables.net-bs/css/dataTables.bootstrap.css' %}">
 {% endblock css %}
 
-{% block heading %}Outstanding georeferencing tasks{% endblock %}
+{% block heading %}{% if request.resolver_match.url_name == 'completed' %}Completed{% else %}Outstanding{% endif %} georeferencing tasks{% endblock %}
 
 {% block content %}
 <table class="table table-striped" id="dataTable">
   <thead>
     <tr>
-      <th>Added on</th>
+      <th>{% if request.resolver_match.url_name == 'completed' %}Completed{% else %}Added on{% endif %}</th>
       <th>ID</th>
       <th>Group</th>
       <th class="col-md-6">Locality</th>
@@ -26,7 +26,8 @@
       <td>{{ georeference.group_id }}</td>
       <td>{{ georeference.locality_name }}</td>
       <td class="col-md-3">
-          <a class="btn btn-primary georeference" href="{% url 'georeference' georeference.id %}" role="button">Georeference
+          <a class="btn btn-info georeference" href="{% url 'georeference' georeference.id %}" role="button">
+            {% if request.resolver_match.url_name == 'completed' %}Edit {% endif %}Georeference
             <span class="glyphicon glyphicon-globe" aria-hidden="true"></span></a>
           <button class="btn btn-danger delete-prompt" data-url="{% url 'delete' georeference.id %}"
                   data-title="{{ georeference.locality_name }}"  data-toggle="modal" data-target="#deleteModal" role="button">Delete
@@ -45,13 +46,14 @@
   <div class="modal-dialog" role="document">
     <div class="modal-content">
       <div class="modal-header">
-        <h4 class="modal-title" id="myModalLabel">Are you sure?</h4>
+        <h4 class="modal-title" id="myModalLabel">Delete georeference</h4>
       </div>
       <div class="modal-body">
-        <div id="deleteModalPrompt">Do you want to delete "<span id="localityNameForDelete"></span>"?</div>
+        <div id="deleteModalPrompt">Are you sure? Do you want to delete "<span id="localityNameForDelete"></span>"?</div>
         <div id="deleteModalSuccess" class="success" style="display: none">
           Successfully deleted.
-          <a href="{% url 'index' %}" type="button" class="btn btn-success">Continue
+          <a href="{% if request.resolver_match.url_name == 'completed' %}
+          {% url 'completed' %}{% else %}{% url 'index' %}{% endif %}" type="button" class="btn btn-success">Continue
             <span class="glyphicon glyphicon-arrow-right" aria-hidden="true"></span>
           </a>
         </div>

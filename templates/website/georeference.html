@@ -10,43 +10,53 @@
 {% endblock css %}
 
 {% block heading %}
-  <a class="btn btn-warning" role="button" href="{% url 'index' %}">
+  <a class="btn btn-default btn-sm" role="button" href="{% if georeference.geographical_position %}
+  {% url 'completed' %}{% else %}{% url 'index' %}{% endif %}">
     <span class="glyphicon glyphicon-arrow-left" aria-hidden="true"></span>
     Back
   </a>
-  Georeference locality ID {{ georeference.unique_id }}
+  Georeference locality <small>ID {{ georeference.unique_id }}</small>
+  {% if georeference.geographical_position %}
+    <button class="btn btn-success btn-lg" role="button" disabled style="float: right;">
+      <span class="glyphicon glyphicon-ok" aria-hidden="true"></span>
+    Already georeferenced</button>
+  {% else %}
+    <button class="btn btn-warning btn-lg" role="button" disabled style="float: right;">
+      <span class="glyphicon glyphicon-globe" aria-hidden="true"></span>
+    Not yet georeferenced</button>
+  {% endif %}
 {% endblock %}
 
 {% block content %}
-<h2>
-    <small>{{ georeference.locality_name }}</small>
+<h2 style="font-size: 1.5em; font-weight: normal;">
+    {{ georeference.locality_name }}
   <button class="btn btn-info" role="button">Show others in Group #{{ georeference.group_id }}
   <span class="glyphicon glyphicon-th" aria-hidden="true"></span></button>
+  <a class="btn btn-default" role="button" href="{% url 'auto_geolocate' georeference.id %}">Repeat auto-geolocate process
+    <span class="glyphicon glyphicon-repeat" aria-hidden="true"></span></a>
 </h2>
-<hr>
-<h3>Locality parts</h3>
 <div class="well">
-  <p>The system attempts to clean up the locality name and to recognise distances,
-bearings, etc and apply them to the map. Listed below are the different parts of the locality name, split up. The system then checks several geo databases to try and automatically geolocate the locality name.
-  <a class="btn btn-default" role="button" href="{% url 'auto_geolocate' georeference.id %}">Repeat auto-geolocate process <span class="glyphicon glyphicon-repeat" aria-hidden="true"></span></a>
-  <a class="btn btn-default" role="button" href="{% url 'clean_locality' georeference.id %}">Clean locality <span class="glyphicon glyphicon-repeat" aria-hidden="true"></span></a>
-  </p>
-<table class="table table-striped">
-  <thead>
-    <tr>
-    {% for key, item in georeference.locality_name.locality_parts.items %}
-    <th>{{ key }}</th>
-    {% endfor %}
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-    {% for key, item in georeference.locality_name.locality_parts.items %}
-    <td>{{ item }}</td>
-    {% endfor %}
-    </tr>
-  </tbody>
-</table>
+  <h3 data-toggle="tooltip" data-placement="top" title="The system cleans and splits up locality names into parts">Cleaned locality name
+    <a class="btn btn-default" role="button" href="{% url 'clean_locality' georeference.id %}">
+      Re-clean locality (debugging)
+      <span class="glyphicon glyphicon-repeat" aria-hidden="true"></span></a>
+  </h3>
+  <table class="table">
+    <thead>
+      <tr>
+      {% for key, item in georeference.locality_name.locality_parts.items %}
+      <th>{{ key }}</th>
+      {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+      {% for key, item in georeference.locality_name.locality_parts.items %}
+      <td>{{ item }}</td>
+      {% endfor %}
+      </tr>
+    </tbody>
+  </table>
 </div>
 <div id="leaflet" style="height: 400px"></div>
 <hr>

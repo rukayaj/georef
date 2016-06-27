@@ -9,7 +9,7 @@
 <h1>Add georeferencing tasks in bulk</h1>
 <div id="hot"></div>
 <hr>
-<form action="{% url 'process' %}" method="post" id="process" role="form">{% csrf_token %}
+<form action="{% url 'process_bulk' %}" method="post" id="process" role="form">{% csrf_token %}
   <input type="hidden" name="data" id="data">
   <button class="btn btn-primary" data-redirect="" type="submit">Process entries</button>
 </form>
