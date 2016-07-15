@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="{% static 'leaflet-draw/dist/leaflet.draw.css' %}">
 <link rel="stylesheet" href="{% static 'leaflet-measure/dist/leaflet-measure.css' %}">
 <link rel="stylesheet" href="{% static 'leafletmeasurecontrol/leaflet.measurecontrol.css' %}">
+<link rel="stylesheet" href="{% static 'Leaflet.extra-markers/dist/css/leaflet.extra-markers.min.css' %}">
 {% endblock css %}
 
 {% block heading %}
@@ -71,8 +72,9 @@
 
 <form style="display: none;" class="template-form" method="post" action="{% url 'set_geographical_position' georeference.id %}">{% csrf_token %}
     <h3><span class="form-heading">Map marker</span> <small class="form-coords"></small></h3>
+    <h4 class="form-origin"></h4>
     {% for field in geographical_position_form %}
-      {% if field.name == 'buffer' %}
+      {% if field.name == 'precision' %}
         {% bootstrap_field field addon_after="km" %}
       {% else %}
         {% bootstrap_field field %}
@@ -90,6 +92,10 @@
 <script src="{% static 'leaflet/dist/leaflet.js' %}"></script>
 <script src="{% static 'leaflet-draw/dist/leaflet.draw.js' %}"></script>
 <script src="{% static 'leaflet-measure/dist/leaflet-measure.min.js' %}"></script>
+<script src="{% static 'Leaflet.extra-markers/dist/js/leaflet.extra-markers.min.js' %}"></script>
+
+<!-- Load Esri Leaflet from CDN -->
+<script src="https://cdn.jsdelivr.net/leaflet.esri/1.0.0/esri-leaflet.js"></script>
 
 <!-- Not on NPM, https://github.com/makinacorpus/Leaflet.MeasureControl -->
 <script src="{% static 'leafletmeasurecontrol/leaflet.measurecontrol.js' %}"></script>
@@ -104,5 +110,6 @@
     $('select').attr('disabled', false);
   }
 </script>
+<script src="{% static 'leaflet-icons.js' %}"></script>
 <script src="{% static 'georeference.js' %}"></script>
 {% endblock js %}

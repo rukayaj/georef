@@ -6,7 +6,7 @@ from django.forms import ModelForm
 class GeographicalPositionForm(ModelForm):
     class Meta:
         model = models.GeographicalPosition
-        fields = ['point', 'feature_type', 'buffer', 'origin']
+        fields = ['point', 'feature_type', 'precision']
         widgets = {
             'point': forms.HiddenInput(),
         }

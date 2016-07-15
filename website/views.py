@@ -29,6 +29,7 @@ input_columns = ['unique_id',
                  'locality']
 
 llres_mapping = {
+    '': 500,
     '1/4dg': 500,
     '5k': 5000,
     '2k': 2000,
@@ -45,11 +46,60 @@ def add_bulk(request):
     return render(request, 'website/add_bulk.html', {'input_columns': json.dumps(input_columns)})
 
 @login_required
-def import_shp(request):
+def import_csv(request):
+    file_loc = 'C:\\Users\\JohaadienR\\Documents\\Projects\\python-sites\\georef-data-sources\\gazetteer\\SANBIGazetteer-extract.csv'
+    df = pd.read_csv(file_loc, encoding="ISO-8859-1")
+
+    # Check out what we think has been deduced from QDS
+    def from_qds(x):
+        diff = round(float(abs(x - round(x, 1))), 3)
+        return diff == 0.035 or diff == 0.05
+
+    # df['lat_from_qds'] = df['LAT'].apply(from_qds, axis=1)
+    # df['long_from_qds'] = df['LONG'].apply(from_qds, axis=1)
+
+    # Now we have to go through and see whether there are any localities with this particular locality string
+    def create_georeference(row):
+        print(row)
+        # Create locality name
+        try:
+            locality_name = models.LocalityName.objects.get(locality_name=row['GAZNAME'])
+        except models.LocalityName.DoesNotExist:
+            print('already exists = ' + row['GAZNAME'])
+            locality_name = models.LocalityName(locality_name=row['GAZNAME'])
+            locality_name.save()
+
+        # Create geolocation
+        point = Point(row['LONG'], row['LAT'])
+        #try:
+        #    geographical_position = models.GeographicalPosition.objects.get(point__distance_lte=(point, 7000))
+        #except models.GeographicalPosition.DoesNotExist:
+        try:
+            geographical_position = models.GeographicalPosition.objects.get(point=point)
+        except models.GeographicalPosition.DoesNotExist:
+            geographical_position = models.GeographicalPosition(point=point, notes=row['FEATYPE'],
+                                                                origin=models.GeographicalPosition.GAZETTEER)
+            #if row['Precision_m']:
+            #    geographical_position.buffer = row['Precision_m']
+            geographical_position.save()
+
+        # Create georeference
+        georeference = models.GeoReference(locality_name=locality_name,
+                                           geographical_position=geographical_position)
+        georeference.save()
+
+    df.apply(create_georeference, axis=1)
+
+    import pdb; pdb.set_trace()
+
+@login_required
+def import_shp(request, shp_name):
     from django.contrib.gis.gdal import DataSource
-    from django.contrib.gis.utils import LayerMapping
+    root = 'C:\\Users\\JohaadienR\\Documents\\Projects\\python-sites\\georef-data-sources\\'
+    # from django.contrib.gis.utils import LayerMapping
     #ds = DataSource('C:\\Users\\JohaadienR\\Documents\\Projects\\python-sites\\georef-data-sources\\rqis_rivers\\wriall500.shp')
-    file_loc = 'C:\\Users\\JohaadienR\\Documents\\Projects\\python-sites\\georef-data-sources\\roads\\South Africa_Roads.shp'
+    # https://www.arcgis.com/home/item.html?id=a600c0464b904dfcac0a4410ff56edc9
+    file_loc = root + 'roads\\South Africa_Roads.shp'
     ds = DataSource(file_loc)
     layer = ds[0]
     print(layer.srs)
@@ -66,27 +116,18 @@ def import_shp(request):
         gr = models.GeoReference(locality_name=ln, geographical_position=gp)
         gr.save()
         print('saving geo ref')
-    '''
-    mapping = {
-        'name': 'ROADNO',  # The 'name' model field maps to the 'str' layer field.
-        'line': 'LINESTRING',  # For geometry fields use OGC name.
-        'feature_type': models.GeographicalPosition.ROAD,
-        'origin': models.GeographicalPosition.ROADS
-    }
-    lm = LayerMapping(models.GeographicalPosition, file_loc, mapping)
-    lm.save(verbose=True)  # Save the layermap, imports the data.'''
 
 
 @login_required
 def index(request):
     georeferences = models.GeoReference.objects.filter(user=request.user, geographical_position=None)
-    return render(request, 'website/index.html', {'georeferences': georeferences})
+    return render(request, 'website/outstanding_list.html', {'georeferences': georeferences})
 
 
 @login_required
 def completed(request):
     georeferences = models.GeoReference.objects.filter(user=request.user).exclude(geographical_position=None)
-    return render(request, 'website/index.html', {'georeferences': georeferences})
+    return render(request, 'website/completed_list.html', {'georeferences': georeferences})
 
 
 class DeleteGeoreference(SingleObjectMixin, View):
@@ -107,7 +148,7 @@ def qc(request):
     # Automatically shown all done this month
     georeferences = models.GeoReference.objects.filter(created_on__year=datetime.date.today().year,
                                                        created_on__month=datetime.date.today().month)
-    return render(request, 'website/index.html', {'georeferences': georeferences})
+    return render(request, 'website/qc_list.html', {'georeferences': georeferences})
 
 
 class GeoReferenceUpdateView(UpdateView):
@@ -149,9 +190,8 @@ def set_geographical_position(request, pk):
         # Create the input geographical position from the post data
         geographical_position = forms.GeographicalPositionForm(request.POST)
 
-        # For reasons best known to itself Django likes to call is_valid just once on this thing before working
-        # Seriously, call is_valid first time and it gives an attribute error, the second time it returns true/false
-        # Wtf.
+        # Call is_valid first time and it gives an attribute error, the second time it returns true/false
+        # Wtf. So I am just adding a try/except in here to call it once and ignore it
         try:
             print(geographical_position.is_valid())
         except AttributeError:
@@ -187,18 +227,6 @@ def process_bulk(request):
     # Send it back to the template - this is what we used to do
     # return render(request, 'website/process.html', {'data': df.to_json(orient='records')})
 
-    # Get the input lat/long point data where we have it
-    df['original_point'] = False
-
-    # Create a Location object for all longdec & latdec inputs in the dataframe
-    df.loc[pd.notnull(df['lat']) & pd.notnull(df['long']) & pd.notnull(df['res']), 'original_point'] = \
-        df.apply(lambda x:  models.GeographicalPosition(point=Point(x['long'], x['lat']),
-                                               origin=models.GeographicalPosition.INPUT,
-                                               buffer=llres_mapping[x['res']]), axis=1)
-
-    # We don't need these fields any more, we've used them above
-    del df['lat'], df['long'], df['res']
-
     # Now we have to go through and see whether there are any localities with this particular locality string
     def create_georeference(row):
         try:
@@ -222,13 +250,11 @@ def process_bulk(request):
                                            unique_id=row['unique_id'])
 
         # Now we need to store original_point in our locality name
-        if 'original_point' in row and row['original_point']:
-            # georeference.potential_geographical_positions = serializers.serialize('json', [row['original_point'], ])
-            # georeference.potential_geographical_positions = json.dumps([row['original_point']])
-            # georeference.potential_geographical_positions = json.dumps(model_to_dict(row['original_point']))
-            georeference.potential_geographical_positions = serialize('custom_geojson',
-                                                             [row['original_point']],
-                                                             geometry_field='point')
+        if row['lat'] and row['long'] and row['res'] in llres_mapping:
+            pos = models.GeographicalPosition(point=Point(row['long'], row['lat']),
+                                              origin=models.GeographicalPosition.INPUT,
+                                              precision=llres_mapping[row['res']])
+            georeference.potential_geographical_positions = serialize('custom_geojson', [pos], geometry_field='point')
 
         georeference.auto_geolocate()
         print('saving georeference')

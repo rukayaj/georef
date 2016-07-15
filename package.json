@@ -17,6 +17,7 @@
   },
   "homepage": "https://github.com/rukayaj/georef#readme",
   "dependencies": {
+    "Leaflet.extra-markers": "file:///C:\\Users\\JohaadienR\\Downloads\\Leaflet.ExtraMarkers-master\\Leaflet.ExtraMarkers-master",
     "bootpag": "^1.0.7",
     "bootstrap": "^3.3.6",
     "datatables.net": "^1.10.12",

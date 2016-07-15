@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'npm',
     'djgeojson',
     'bootstrap3',
+    'pgfuzzy',
 ]
 
 MIDDLEWARE_CLASSES = [

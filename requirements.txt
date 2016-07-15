@@ -3,6 +3,7 @@ django-bootstrap3==7.0.1
 django-geojson==2.9.0
 django-leaflet==0.18.1
 django-npm==1.0.0
+django-pgfuzzy==0.1.4
 geopy==1.11.0
 numpy==1.11.0
 pandas==0.18.1

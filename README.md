@@ -7,7 +7,7 @@ Install node https://nodejs.org/en/ it comes bundled with npm (node package mana
 Database
 ----
 Requires postgres 9.5 and postgis. 
-Create a database called 'georef' and run sql "CREATE EXTENSION postgis;" in that db
+Create a database called 'georef' and run sql "CREATE EXTENSION postgis;CREATE EXTENSION fuzzystrmatch;" in that db
 Application settings are in georef/settings.py, change to whatever is appropriate
 
 ----
@@ -27,7 +27,7 @@ With the virtual env activated, do "pip install x.whl" for both
 ----
 Install other requirementss
 ----
-GDAL and psycopg2 do not install well on windows so have to do the above step. But now you can just do "pip install requirements.txt"
+GDAL and psycopg2 do not install well on windows so have to do the above step. But now you can just do "pip install -r requirements.txt"
 Install front end requirements with npm install (in same directory as package.json)
 
 ----
