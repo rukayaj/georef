@@ -325,6 +325,9 @@ def process_bulk(request):
     # Load the data into pandas
     data = json.loads(request.POST['data'])
     for row in data:
+        
+        if row[input_columns.index('locality')]:
+            continue
         if row[input_columns.index('locality')].strip() == '':
             continue
         try:
