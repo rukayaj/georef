@@ -264,7 +264,7 @@ class GeoReferenceUpdateView(UpdateView):
                 same_collector.append(p.geographical_position)
         if same_collector:
             context['same_collector'] = serialize('custom_geojson', same_collector, geometry_field='point')
-
+        
         if not self.object.potential_geographical_positions:
             self.object.auto_geolocate()
             self.object.save()
@@ -325,8 +325,7 @@ def process_bulk(request):
     # Load the data into pandas
     data = json.loads(request.POST['data'])
     for row in data:
-        
-        if row[input_columns.index('locality')]:
+        if row[input_columns.index('locality')] is None:
             continue
         if row[input_columns.index('locality')].strip() == '':
             continue
