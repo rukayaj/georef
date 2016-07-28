@@ -329,6 +329,7 @@ def process_bulk(request):
             locality_name = models.LocalityName.objects.get(locality_name=row[input_columns.index('locality')])
         except models.LocalityName.DoesNotExist:
             locality_name = models.LocalityName(locality_name=row[input_columns.index('locality')])
+            locality_name.save()
 
         # Create the new georeference
         georeference = models.GeoReference(locality_name=locality_name,
@@ -363,7 +364,6 @@ def process_bulk(request):
                 print('problem with lat/long')
 
         # Everything's cool, let's save
-        locality_name.save()
         georeference.save()
 
     return redirect('index')
