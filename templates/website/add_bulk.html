@@ -2,7 +2,8 @@
 {% load static %}
 
 {% block css %}
-<link rel="stylesheet" media="screen" href="{% static 'handsontable/dist/handsontable.full.css' %}">
+<!--<link rel="stylesheet" media="screen" href="{% static 'handsontable/dist/handsontable.full.css' %}">-->
+<link rel="stylesheet" media="screen" href="https://cdnjs.cloudflare.com/ajax/libs/handsontable/0.26.1/handsontable.full.min.css">
 {% endblock css %}
 
 {% block content %}
@@ -19,7 +20,8 @@
 <script>
   var input_columns = {{ input_columns|safe }};
 </script>
-<script src="{% static 'handsontable/dist/handsontable.full.js' %}"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/handsontable/0.26.1/handsontable.full.min.js"></script>
+<!--<script src="{% static 'handsontable/dist/handsontable.full.js' %}"></script>-->
 <script src="{% static 'hot_uploader.js' %}"></script>
 <script>
 </script>
