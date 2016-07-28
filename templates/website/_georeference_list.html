@@ -24,12 +24,13 @@
       <td>{{ georeference.group_id }}</td>
       <td>{{ georeference.locality_name }}</td>
       <td class="col-md-3">
-          <a class="btn btn-info georeference" href="{% url 'georeference' georeference.id %}" role="button">
-            {% block georeference_action %}Georeference{% endblock %}
-            <span class="glyphicon glyphicon-globe" aria-hidden="true"></span></a>
-          <button class="btn btn-danger delete-prompt" data-url="{% url 'delete' georeference.id %}"
+        {% block georeference_action %}
+        <a class="btn btn-info georeference" href="{% url 'georeference' georeference.id %}" role="button">
+        Georeference<span class="glyphicon glyphicon-globe" aria-hidden="true"></span></a>
+        {% endblock %}
+        <button class="btn btn-danger delete-prompt" data-url="{% url 'delete' georeference.id %}"
                   data-title="{{ georeference.locality_name }}"  data-toggle="modal" data-target="#deleteModal" role="button">Delete
-            <span class="glyphicon glyphicon-trash" aria-hidden="true"></span></button>
+        <span class="glyphicon glyphicon-trash" aria-hidden="true"></span></button>
       </td>
     </tr>
     {% empty %}

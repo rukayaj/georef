@@ -18,6 +18,9 @@ from django.contrib.auth.models import User
 from djgeojson.serializers import Deserializer as GeoJSONDeserializer
 from geopy.distance import distance, VincentyDistance
 import math
+from dateutil.relativedelta import relativedelta
+from django.utils import formats
+from django.db import connection
 
 
 class GeographicalPosition(models.Model):
@@ -57,8 +60,9 @@ class GeographicalPosition(models.Model):
 
     # Origin of the point/polygon
     USER = 'US'
-    GAZETTEER = 'GA'
     GOOGLE = 'GO'
+    GAZETTEER = 'GA'
+    BRAHMS = 'BR'
     GEOCODEFARM = 'GE'
     NOMINATIM = 'NO'
     INPUT = 'IN'
@@ -66,17 +70,22 @@ class GeographicalPosition(models.Model):
     RQIS = 'RQ'
     ROADS = 'RO'
     UNKNOWN = 'UN'
+    SABCA = 'SA'
+    SAME_GROUP = 'SG'
     origin_choices = (
         (USER, 'User'),
         (GOOGLE, 'Google'),
         (GAZETTEER, 'SANBI gazetteer'),
+        (BRAHMS, 'BRAHMS'),
         (GEOCODEFARM, 'Geocode farm'),
         (NOMINATIM, 'Nominatim'),
         (INPUT, 'Input'),
         (RQIS, 'South Africa 1:500 000 Rivers'),
         (ROADS, 'Official list of roads'),
         (UNKNOWN, 'Unknown'),
-        (LOCALITY_STRING, 'Derived from locality string')
+        (LOCALITY_STRING, 'Derived from locality string'),
+        (SABCA, 'SABCA'),
+        (SAME_GROUP, 'SameGroup')
     )
     origin = models.CharField(max_length=2, choices=origin_choices, default=UNKNOWN)
 
@@ -93,7 +102,7 @@ class LocalityName(models.Model):
     created_on = models.DateTimeField(auto_now_add=True)
 
     # The main part of this model is the locality name e.g. "Cape Town"
-    locality_name = models.TextField(help_text='The locality string')
+    locality_name = models.TextField(help_text='The locality string', max_length=250)
 
     # Parts of the locality name, cleaned
     locality_parts = JSONField()
@@ -115,33 +124,41 @@ class LocalityName(models.Model):
         self._get_nearby()
         self._get_feature_type()
 
-        # Do we want to split up places in the string if possible?
-        phrases = [
-            'at foot of',
-            'along the top of',
-            'at the bottom of',
-            'at the mouth of',
-            'nearby'
-        ]
-
+        # Trim off extra full stops, commas, spaces, etc
         self.locality_parts['locality'] = self.clean_string(self.locality_parts['locality'])
 
+        # We're also going to split up what's remaining by either , or . so we can break up our search
+        self.locality_parts['split_localities'] = self.locality_parts['locality'].split('.')
+        if len(self.locality_parts['split_localities']) == 1:
+            self.locality_parts['split_localities'] = self.locality_parts['locality'].split(',')
+        if len(self.locality_parts['split_localities']) == 1:
+            self.locality_parts['split_localities'] = self.locality_parts['locality'].split(':')
+        if len(self.locality_parts['split_localities']) == 1:
+            self.locality_parts['split_localities'] = self.locality_parts['locality'].split(';')
+
     def _get_lat_long_dms(self):
+        south = False
+        east = False
+
         # E.g. 29°58'51.5's 17°33'04.9'e
-        regex = r'\s+([1-5]\d)°(\d\d)\'(\d\d(\.\d+)?)\'?s[\s:,]?\s*([1-5]\d)°(\d\d)\'(\d\d(\.\d+))?\'?e?'
+        regex = r'\s+([1-5]\d)°(\d\d)\'?([\d\.]+)["\']?\s*s[\s:;,]+([1-5]\d)°(\d\d)\'?([\d\.]+)["\']?\s*e?'
         match = re.search(regex, str(self.locality_parts['locality']))
-
-        # If this has not provided a match then try again
-        if not match:
-            regex = '\s[sS][\s\.](\d\d)[\s\.d](\d\d)[\s\.m](\d\d)(\.\d+)?s?\s*,?\s*[eE][\s\.](\d\d)[\s\.d](\d\d)[\s\.m](\d\d)(\.\d+)?s?\s'
-            match = re.search(regex, str(self.locality_parts['locality']))
-
-        # Finally if we have a match, do the conversion
         if match:
             south = {'degrees': float(match.group(1)), 'minutes': float(match.group(2)),
                      'seconds': float(0 if match.group(3) is None else match.group(3))}
-            east = {'degrees': float(match.group(5)), 'minutes': float(match.group(6)),
-                    'seconds': float(0 if match.group(7) is None else match.group(7))}
+            east = {'degrees': float(match.group(4)), 'minutes': float(match.group(5)),
+                    'seconds': float(0 if match.group(6) is None else match.group(6))}
+        else:
+            regex = '\s[sS][\s\.](\d\d)[\s\.d](\d\d)[\s\.m](\d\d)(\.\d+)?s?\s*,?\s*[eE][\s\.](\d\d)[\s\.d](\d\d)[\s\.m](\d\d)(\.\d+)?s?\s'
+            match = re.search(regex, str(self.locality_parts['locality']))
+
+            if match:
+                south = {'degrees': float(match.group(1)), 'minutes': float(match.group(2)),
+                         'seconds': float(0 if match.group(3) is None else match.group(3))}
+                east = {'degrees': float(match.group(5)), 'minutes': float(match.group(6)),
+                        'seconds': float(0 if match.group(7) is None else match.group(7))}
+
+        if south and east:
             lat = south['degrees'] + south['minutes'] / 60 + south['seconds'] / 3600
             long = east['degrees'] + east['minutes'] / 60 + east['seconds'] / 3600
 
@@ -175,6 +192,10 @@ class LocalityName(models.Model):
             self.locality_parts['long'] = long
 
     def _standardise_language(self):
+        # Get rid of all single quotes and double quotes, they cause havoc in the database
+        self.locality_parts['locality'] = self.locality_parts['locality'].replace("'", '')
+        self.locality_parts['locality'] = self.locality_parts['locality'].replace('"', '')
+
         # A simple attempt to try and standardise the language a bit, especially the afrikaans
         standardise_language = [
             {'replace': 'near',
@@ -332,16 +353,15 @@ class LocalityName(models.Model):
         regex = r'\s+on\s+(.*?)road\s+(to)?'
         self.locality_parts['road'] = False
 
-
     def _get_nearby(self):
-        regex = '\s+(between)(.+?)(and|&)([^\.]+)'
+        regex = '\s+(between)(.+?)(and|&)([^\.,]+)'
         match = re.search(regex, self.locality_parts['locality'])
         if match:
             self.locality_parts['between'] = [match.group(2), match.group(4)]
             self.locality_parts['locality'] = re.sub(regex, '', self.locality_parts['locality'])
 
         # Note that we already standardised nearby & between variations in standardise_language
-        regex = '\s+nearby\s*([^.,;:]+)'
+        regex = '\s+near\s+([^.,;:]+)'
         match = re.search(regex, self.locality_parts['locality'])
         if match:
             self.locality_parts['nearby'] = match.group(1)
@@ -362,7 +382,7 @@ class LocalityName(models.Model):
             {'replace': 'forest',
              'regex': [r'\s+for\.']},
             {'replace': 'nature reserve',
-             'regex': [r'\s+nat\.?\s+res\.?', r'\s+n\.?\s?r\.?', r'nr\.']},
+             'regex': [r'\s+nat\.?\s+res\.?', r'\s+nat[\.\s]res[\.\s]', r'\s+n\.?\s?r\.?', r'nr\.']},
             {'replace': 'game reserve',
              'regex': [r'\s+game\s+res\.']},
             {'replace': 'reserve',
@@ -414,20 +434,13 @@ def post_init(sender, instance, **kwargs):
     instance.clean_locality()
 
 
-class LocalityDate(models.Model):
-    """
-    A locality might have several dates associated with it
-    """
-    locality_name = models.ForeignKey(LocalityName)
-    date = models.DateField(null=True, blank=True)
-
-
 class GeoReference(models.Model):
     locality_name = models.ForeignKey(LocalityName)
     geographical_position = models.ForeignKey(GeographicalPosition, null=True, blank=True)
     user = models.ForeignKey(User, null=True, blank=True)
     group_id = models.CharField(max_length=50)
     unique_id = models.CharField(max_length=50)
+    locality_date = models.DateField(null=True, blank=True)
     created_on = models.DateTimeField(auto_now_add=True)
     notes = models.TextField(max_length=50)
 
@@ -447,7 +460,7 @@ class GeoReference(models.Model):
             for gl in GeoJSONDeserializer(stream_or_string=ps,
                                           model_name='website.GeographicalPosition',
                                           geometry_field='point'):
-                # Add any pre-existing geographical positions which are 'input' types i.e. came in bulk form
+                # Add any pre-existing geographical positions which are 'input' types i.e. came in bulk form or were manually added
                 if gl.object.origin == dict(GeographicalPosition.origin_choices).get(GeographicalPosition.INPUT):
                     self.potential_geographical_positions.append(gl.object)
 
@@ -459,161 +472,115 @@ class GeoReference(models.Model):
                                      origin=GeographicalPosition.LOCALITY_STRING,
                                      notes='Taken from lat/long in locality string'))
 
-        # Geolocate!
+        # First, try and geolocate the unedited string
+        self.geolocate(self.locality_name.locality_name, limit=5)
 
-        # From our database (inc the gazetteer)
-        matched_georeferences = self._search_for_locality(self.locality_name.locality_parts['locality'])
-        for m in matched_georeferences:
-            m.geographical_position.notes = m.locality_name.locality_parts['locality'].title()
-            self.potential_geographical_positions.append(m.geographical_position)
-
-        # From remote dbs, format string accordingly
+        # Geolocate the locality + province for the locality strings, automatically saving it to our potential_geographical_positions
         if 'province' in self.locality_name.locality_parts:
-            string = self.locality_name.locality_parts['locality'] + ', ' + self.locality_name.locality_parts['province']
+            for s in self.locality_name.locality_parts['split_localities']:
+                self.geolocate(s + ', ' + self.locality_name.locality_parts['province'], limit=1)
         else:
-            string = self.locality_name.locality_parts['locality']
-        self.geolocate_google(string)
-        self._geolocate_nominatim(string + ', South Africa')
+            for s in self.locality_name.locality_parts['split_localities']:
+                self.geolocate(s, limit=1)
 
         # Ok now if we have between then get the midpoint between those two points
         if 'between' in self.locality_name.locality_parts:
-            geo_a = self._get_best_geographical_position(self.locality_name.locality_parts['between'][0])
-            geo_b = self._get_best_geographical_position(self.locality_name.locality_parts['between'][1])
-            line = LineString(geo_a.point, geo_b.point)
-            self.potential_geographical_positions.append(GeographicalPosition(point=line.centroid,
-                                                                              origin=GeographicalPosition.LOCALITY_STRING,
-                                                                              feature_type=GeographicalPosition.BETWEEN,
-                                                                              notes='Between ' + self.locality_name.locality_parts['between'][0].strip() + ' and ' + self.locality_name.locality_parts['between'][1].strip()))
+            self.geolocate(self.locality_name.locality_parts['between'][0], notes='(BETWEEN)')
+            self.geolocate(self.locality_name.locality_parts['between'][1], notes='(BETWEEN)')
 
         if 'place_measured_from' in self.locality_name.locality_parts:
             # Get a point for the start/place measured from place
-            start = self._get_best_geographical_position(self.locality_name.locality_parts['place_measured_from'])
-            self.potential_geographical_positions.append(GeographicalPosition(point=start.point,
-                                                                              origin=GeographicalPosition.LOCALITY_STRING,
-                                                                              feature_type=GeographicalPosition.MEASURED,
-                                                                              notes=start.notes + ' (start of measurement)'))
-
-            # Check for bearings and distances
-            if start and 'bearings' in self.locality_name.locality_parts and 'km_distance' in self.locality_name.locality_parts:
-                # Convert to numbers for VincentyDistance 0 degrees is north, 180 is south
-                degrees = self.get_bearings(self.locality_name.locality_parts['bearings'])
-
-                # Use the `destination` method with a bearing of 0 degrees (which is north)
-                # in order to go from point `start` 1 km to north.
-                destination = VincentyDistance(kilometers=self.locality_name.locality_parts['km_distance'] * -1).destination(start.point, degrees)
-                destination = Point(destination.latitude, destination.longitude)  # Why does this have to be swapped?
-                self.potential_geographical_positions.append(GeographicalPosition(point=destination,
-                                                                                  origin=GeographicalPosition.LOCALITY_STRING,
-                                                                                  feature_type=GeographicalPosition.MEASURED,
-                                                                                  notes=str(self.locality_name.locality_parts['km_distance']) + ' ' + ' from ' + start.notes))
+            self.geolocate(self.locality_name.locality_parts['place_measured_from'], notes='(MEASURED FROM)')
 
             # Otherwise we might have measured towards somewhere
             if 'place_measured_towards' in self.locality_name.locality_parts:
-                towards = self._get_best_geographical_position(self.locality_name.locality_parts['place_measured_towards'])
-                self.potential_geographical_positions.append(GeographicalPosition(point=towards.point,
-                                                                                  origin=GeographicalPosition.LOCALITY_STRING,
-                                                                                  feature_type=GeographicalPosition.MEASURED,
-                                                                                  notes=towards.notes + ' (end of measurement)'))
-                if start and 'km_distance' in self.locality_name.locality_parts:
-                    # Get the angle between the start and end points
-                    radian = math.atan((start.point.y - towards.point.y) / (start.point.x - towards.point.x))
-                    degrees = abs(radian * 180 / math.pi)
+                self.geolocate(self.locality_name.locality_parts['place_measured_towards'], notes='(MEASURED TOWARDS)')
 
-                    w = start.point.x > towards.point.x
-                    e = start.point.x < towards.point.x
-                    n = start.point.y < towards.point.y
-                    s = start.point.y > towards.point.y
-
-                    if n and w:
-                        degrees = degrees + 270
-                    elif n and e:
-                        degrees = 90 - degrees
-                    elif s and w:
-                        degrees = 270 - degrees
-                    elif s and e:
-                        degrees = 90 + degrees
-
-                    # distance = self.locality_name.locality_parts['km_distance']
-                    # lat = start.point.y + (distance * math.sin(degrees))
-                    # long = start.point.x + (distance * math.cos(degrees))
-                    # destination = Point(long, lat)
-
-                    # Measure the distance along that angle
-
-                    destination = VincentyDistance(kilometers=self.locality_name.locality_parts['km_distance']).destination(start.point, degrees)
-                    destination = Point(destination.latitude, destination.longitude)  # Why does this need to be swapped?
-                    self.potential_geographical_positions.append(GeographicalPosition(point=destination,
-                                                                                      origin=GeographicalPosition.LOCALITY_STRING,
-                                                                                      feature_type=GeographicalPosition.MEASURED,
-                                                                                      notes=str(self.locality_name.locality_parts['km_distance'])
-                                                                                            + ' ' + ' from ' + start.notes + ' towards ' + towards.notes))
-                elif start and 'km_distance' not in self.locality_name.locality_parts:
-                    # Otherwise if we don't have a distance, just get the midpoint
-                    line = LineString(start.point, towards.point)
-                    self.potential_geographical_positions.append(GeographicalPosition(point=line.centroid,
-                                                                                      origin=GeographicalPosition.LOCALITY_STRING,
-                                                                                      feature_type=GeographicalPosition.BETWEEN,
-                                                                                      notes='Midpoint between ' + start.notes + ' and ' +
-                                                                                            towards.notes))
-
-        # If we have multiple results with the same (roughly) point we need to make it just 1 point to display on map?
+        # If we have multiple results with the same (roughly) point, discard them
 
         # If we've managed to uncover anything then return it
         if self.potential_geographical_positions:
             self.potential_geographical_positions = serialize('custom_geojson', self.potential_geographical_positions,
                                                               geometry_field='point')
 
-    def get_bearings(self, bs):
-        degrees = 0
-        operator = 1 if 'east' in bs else -1
-        ns_count = bs.count('north')
+    def geolocate(self, name, notes='', limit=2):
+        # First try our own database:
+        geos = list(self._geolocate_database(name, limit=limit))
 
-        # If your bearing is south and you move further east you subtract from 180, westward you add (opposite in north)
-        if 'south' in bs:
-            degrees = 180
-            operator *= -1
-            ns_count = bs.count('south')
+        # Then try google
+        google_point = self._geolocate_google(name, append=False)
+        if google_point:
+            geos.append(google_point)
 
-        # Count how many times you have to move east/west
-        ew_count = bs.count('west') if 'west' in bs else bs.count('east')
-        if ew_count:
-            # Either add or subtract 45 degrees
-            degrees += (45 * operator)
-            if ew_count == 2:  # Not even going to think about more than 2
-                degrees += ((45 / 2) * operator)
+        # Then nominatim
+        nominatim_point = self._geolocate_nominatim(name + ', South Africa', append=False)
+        if nominatim_point:
+            geos.append(nominatim_point)
 
-        # Count how many times you have to move north/south
-        if ns_count == 2:
-            degrees += ((45 / 2) * operator * -1)
+        # At this point we need to add whatever notes and append all of these to our potential_geo_locations
+        for g in geos:
+            if notes:
+                if g.notes:
+                    g.notes += ' | ' + notes
+                else:
+                    g.notes = notes
 
-        return degrees % 360
+            self.potential_geographical_positions.append(g)
 
-    def _get_best_geographical_position(self, name):
-        georeference = self.geolocate_google(name, append=False)
-        if georeference is not None:
-            return georeference
-        else:
-            matched_georeferences = self._search_for_locality(name, exactly_one=True)
-            if matched_georeferences:
-                georeference = matched_georeferences[0]
-                georeference.geographical_position.notes = str(georeference.locality_name)
-                return georeference.geographical_position
-            else:
-                return False
+        return len(geos)
 
-    def _search_for_locality(self, name, exactly_one=False):
+    def _geolocate_database(self, name, limit):
+        # See if it's contained within something
+        contains = LocalityName.objects.filter(locality_name__icontains=name)[:limit]
+
         # Uses levenshtein https://www.postgresql.org/docs/9.1/static/fuzzystrmatch.html
         # levenshtein(text source, text target, int ins_cost, int del_cost, int sub_cost) returns int
         # High substitute cost, low insert/delete cost 1, 1, 20 to find strings within strings
         # See also http://www.postgresonline.com/journal/archives/158-Where-is-soundex-and-other-warm-and-fuzzy-string-things.html
+        ins_cost = 3
+        del_cost = 5
+        sub_cost = 9
+        if ('fontein' in name or 'berg' in name or 'kloof' in name) and ' ' not in name:
+            ins_cost = 13
+            del_cost = 13
+            sub_cost = 5
+            print('penalising ' + name)
         looks_like = LocalityName.objects.raw(
-            'select * from website_localityname where levenshtein(locality_name, %s, 1, 3, 8) <= 19 '
-            'order by levenshtein(locality_name, %s, 1, 3, 8) limit 5',
-            [name, name])
+            'select * from website_localityname where levenshtein(locality_name, %s, %s, %s, %s) <= 18 '
+            'order by levenshtein(locality_name, %s, %s, %s, %s) limit %s',
+            [name, ins_cost, del_cost, sub_cost, name, ins_cost, del_cost, sub_cost, limit])
 
         # http://www.informit.com/articles/article.aspx?p=1848528
         # Based on https://github.com/django/django/pull/4825#issuecomment-218737831 using metaphone
-        sounds_like = LocalityName.objects.raw('select * from website_localityname where metaphone(locality_name, 5) = metaphone(%s, 5) limit 5', [name])
+        # Let's be a bit cleverer and try and get the best matches we can
+        # Open a connection to the database, and loop through a few times to get max 5 matches
+        count = 6
+        prev_count = 6
+        metaphone_penalty = 4
+        cursor = connection.cursor()
+        while count > 5 and count != prev_count:
+            sql = 'SELECT COUNT(*) FROM website_localityname WHERE metaphone(locality_name, %s) = metaphone(%s, %s)'
+            try:
+                cursor.execute(sql, [metaphone_penalty, name, metaphone_penalty])
+            except:
+                import pdb; pdb.set_trace()
+            row = cursor.fetchone()
+            prev_count = count
+            count = row[0]
+            metaphone_penalty += 1
+            print('metaphone penalty ' + str(metaphone_penalty) + ' / count ' + str(count))
+
+        # Close connection to database
+        cursor.close()
+
+        # If we got no results at all then go back up 1
+        if count == 0:
+            metaphone_penalty -= 1
+
+        # Using the metaphone_penalty derived from the while loop, make our query
+        sounds_like = LocalityName.objects.raw('select * from website_localityname where '
+                                               'metaphone(locality_name, %s) = metaphone(%s, %s) limit %s',
+                                               [metaphone_penalty, name, metaphone_penalty, limit])
 
         # Compile into 1 list
         matches = []
@@ -623,13 +590,19 @@ class GeoReference(models.Model):
         for item in sounds_like:
             if item not in matches:
                 matches.append(item)
+        for item in contains:
+            if item not in matches:
+                matches.append(item)
 
-        if exactly_one:
-            return GeoReference.objects.filter(locality_name=matches[0]).exclude(geographical_position__isnull=True).distinct('locality_name', 'geographical_position')
+        # Get the goereference objects and add any notes
+        georefs = GeoReference.objects.filter(locality_name__in=matches).exclude(geographical_position__isnull=True).\
+            distinct('locality_name', 'geographical_position')
+        geos = []
+        for m in georefs:
+            m.geographical_position.notes = m.locality_name.locality_parts['locality'].title()
+            geos.append(m.geographical_position)
 
-        # Return only items which are georeferenced & which are distinct
-        # TODO make it so that if there are a lot of georeferences pointing at the same point it prioritises those... how?
-        return GeoReference.objects.filter(locality_name__in=matches).exclude(geographical_position__isnull=True).distinct('locality_name', 'geographical_position')
+        return geos
 
     def _geolocate_nominatim(self, string, append=True):
         g = Nominatim(timeout=30)
@@ -637,28 +610,14 @@ class GeoReference(models.Model):
             results = g.geocode(query=string, exactly_one=True)
             if results and results[0]:
                 gp = GeographicalPosition(point=Point(results.longitude, results.latitude), origin=GeographicalPosition.NOMINATIM)
-                # Doesn't seem to throw an error if it doesn't find anything?
+                gp.notes = string
                 if append:
                     self.potential_geographical_positions.append(gp)
                 return gp
         except:
             print("Nominatim - error: " + str(sys.exc_info()))
 
-    def _geolocate_geocode_farm(self, string, append=True):
-        g = GeocodeFarm(timeout=30)
-        try:
-            results = g.geocode(query=string, exactly_one=True)
-            coords = results['geocoding_results']['RESULTS'][0].coordinates
-            gp = GeographicalPosition(point=Point(coords['longitude'], coords['latitude']), origin=GeographicalPosition.GEOCODEFARM)
-            if append:
-                self.potential_geographical_positions.append(gp)
-            return gp
-        except AttributeError as e:
-            print("Geocodefarm - not found: " + string + ' gives error : ' + str(sys.exc_info()))
-        except:
-            print("Geocodefarm - error: " + str(sys.exc_info()))
-
-    def geolocate_google(self, string, append=True):
+    def _geolocate_google(self, string, append=True):
         g = GoogleV3()
         try:
             results = g.geocode(string, region='za')
@@ -679,5 +638,7 @@ class GeoReference(models.Model):
                 return gp
         except AttributeError as e:
             print("Google - not found: " + string + ' gives error : ' + str(sys.exc_info()))
+            return False
         except:
             print("Google - error: " + str(sys.exc_info()))
+            return False

@@ -1,6 +1,15 @@
 {% extends "website/_georeference_list.html" %}
 {% load static %}
 
-{% block heading %}Completed{% endblock %}
+{% block heading %}Completed
+<a class="btn btn-success" href="{% url 'download_completed' %}" role="button">
+  Download completed <span class="glyphicon glyphicon-download-alt" aria-hidden="true"></span></a>
+</a>
+{% endblock %}
 
 {% block georeference_heading %}Completed on{% endblock %}
+
+{% block georeference_action %}
+<a class="btn btn-success georeference" href="{% url 'georeference' georeference.id %}" role="button">
+Check georeference <span class="glyphicon glyphicon-globe" aria-hidden="true"></span></a>
+{% endblock %}

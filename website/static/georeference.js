@@ -8,28 +8,59 @@ $(document).ready(function() {
   })
 
   // Initialise map
-  map = L.map('leaflet').setView([-29, 24.5], 5); // , {drawControl: true}
+  map = L.map('leaflet').setView([-29, 24.5], 5);
+  var overlayMaps = {};
+  var baseMaps = {};
+
+  // Add the TOPO sheets layer - Should really be a tiledMapLayer but this does not seem to work...
+  topo =  L.esri.dynamicMapLayer({
+    url: 'http://bgismaps.sanbi.org/arcgis/rest/services/2016TopoSheets/MapServer',
+    useCors: false
+  });
+  overlayMaps["Topo sheet"] = topo;
+
+  // Add the boundaries layer
+  boundaries =  L.esri.dynamicMapLayer({
+    url: 'http://bgismaps.sanbi.org/arcgis/rest/services/Basedata_transport/MapServer',
+    useCors: false
+  });
+  overlayMaps["Roads"] = boundaries;
+
+  // If we've got collector points, add them in as a layer
+  if(same_collector_points) {
+    // Create a geojson layer, see https://www.dartdocs.org/documentation/leaflet/0.0.1-alpha.4/leaflet.layer/GeoJSON/addData.html
+    collectorLayer = L.geoJson(same_collector_points, {
+      pointToLayer: function(feature, latlng) { // Change marker according to input type
+          marker = SameGroupMarker;
+          return L.marker(latlng, {icon: SameGroupMarker});
+      },
+      onEachFeature: function (feature, layer) {
+        popupContent = feature.properties.notes;
+        // Bind the layer with the form
+        layer.bindPopup(popupContent);
+      }
+    });
+    overlayMaps['Places the collector went'] = collectorLayer;
+  }
+
+  // If it's been georeferenced, add that marker to its own special layer
+  if(geographical_position) {
+    gm = L.marker(geographical_position, {icon: GeoreferencedMarker}).bindPopup('Georeferenced point');
+    overlayMaps['Georeferenced point'] = L.layerGroup([gm, gm]);
+  }
+
+  // Add the national geographic (relief map) and satellite layers layer
+  baseMaps['National geographic'] = L.esri.basemapLayer('NationalGeographic');
+
+  baseMaps["Satellite imagery"] = L.esri.basemapLayer('Imagery');
 
   // Add the default basemap layer
   base = L.tileLayer('http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: 'Map data &copy; 2013 OpenStreetMap contributors',
   });
   base.addTo(map);
-
-  // Add the topo sheets layer
-  topo = L.esri.dynamicMapLayer({
-    url: 'http://bgismaps.sanbi.org/arcgis/rest/services/2016TopoSheets/MapServer',
-    useCors: false
-  });
-  topo.addTo(map);
-
-  // Add the layers control
-  var baseMaps = {
-    "Default": base,
-    "Topo": topo,
-    
-  };
-  L.control.layers(baseMaps).addTo(map);
+  base.bringToFront();
+  baseMaps["Default"] = base;
 
   // Add leaflet draw
   // Initialise the FeatureGroup to store editable layers
@@ -90,6 +121,12 @@ $(document).ready(function() {
         switch(feature.properties.origin) {
           case 'Google':
             marker = GoogleMarker;
+            break;
+          case 'SameGroup':
+            marker = SameGroupMarker;
+            break;
+          case 'SABCA':
+            marker = SABCAMarker;
             break;
           case 'SANBI gazetteer':
             marker = GazetteerMarker;
@@ -167,6 +204,9 @@ $(document).ready(function() {
   // Add the layer to the map and zoom to it
   map.addLayer(geojsonLayer);
   map.fitBounds(geojsonLayer, {padding: [80, 80]});
+  overlayMaps['Potential georeferences'] = geojsonLayer;
+
+  L.control.layers(baseMaps, overlayMaps).addTo(map);
 
 
 });

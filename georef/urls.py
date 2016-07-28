@@ -30,6 +30,7 @@ urlpatterns = [
     url(r'^georeference/(?P<pk>[0-9]+)/auto_geolocate/', views.auto_geolocate, name='auto_geolocate'),
 
     url(r'^process_bulk', views.process_bulk, name='process_bulk'),
+    url(r'^completed/download$', views.download_completed, name='download_completed'),
     url(r'^set-geographical-position/(?P<pk>[0-9]+)/', views.set_geographical_position, name='set_geographical_position'),
 
     url(r'^delete/(?P<pk>[0-9]+)/$', DeleteGeoreference.as_view(), name='delete'),
@@ -37,7 +38,9 @@ urlpatterns = [
     # Just for debugging
     url(r'^georeference/(?P<pk>[0-9]+)/clean_locality/', views.clean_locality, name='clean_locality'),
     url(r'^import/shp/(?P<shp_name>\w+)/$', views.import_shp, name='import_shp'),
-    url(r'^import/csv/$', views.import_csv, name='import_csv'),
+    url(r'^import/sanbi/$', views.import_sanbi, name='import_sanbi'),
+    url(r'^import/sabca/$', views.import_sabca, name='import_sabca'),
+    url(r'^import/brahms/$', views.import_brahms, name='import_brahms'),
 
     # Accounts
     url('^accounts/', include('django.contrib.auth.urls')),

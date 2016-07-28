@@ -11,28 +11,22 @@
 {% endblock css %}
 
 {% block heading %}
-  <a class="btn btn-default btn-sm" role="button" href="{% if georeference.geographical_position %}
-  {% url 'completed' %}{% else %}{% url 'index' %}{% endif %}">
+  <a class="btn btn-default btn-sm" role="button"
+     href="{% if georeference.geographical_position %}{% url 'completed' %}{% else %}{% url 'index' %}{% endif %}">
     <span class="glyphicon glyphicon-arrow-left" aria-hidden="true"></span>
     Back
   </a>
-  Georeference locality <small>ID {{ georeference.unique_id }}</small>
+  Georeference <small>ID {{ georeference.unique_id }} | Group {{ georeference.group_id }} | Date {{ georeference.locality_date }}</small>
   {% if georeference.geographical_position %}
-    <button class="btn btn-success btn-lg" role="button" disabled style="float: right;">
-      <span class="glyphicon glyphicon-ok" aria-hidden="true"></span>
-    Already georeferenced</button>
+  <button class="btn btn-success btn-lg" role="button" disabled style="float: right;">
+  <span class="glyphicon glyphicon-ok" aria-hidden="true"></span> Already georeferenced</button>
   {% else %}
-    <button class="btn btn-warning btn-lg" role="button" disabled style="float: right;">
-      <span class="glyphicon glyphicon-globe" aria-hidden="true"></span>
-    Not yet georeferenced</button>
   {% endif %}
 {% endblock %}
 
 {% block content %}
 <h2 style="font-size: 1.5em; font-weight: normal;">
     {{ georeference.locality_name }}
-  <button class="btn btn-info" role="button">Show others in Group #{{ georeference.group_id }}
-  <span class="glyphicon glyphicon-th" aria-hidden="true"></span></button>
   <a class="btn btn-default" role="button" href="{% url 'auto_geolocate' georeference.id %}">Repeat auto-geolocate process
     <span class="glyphicon glyphicon-repeat" aria-hidden="true"></span></a>
 </h2>
@@ -95,7 +89,7 @@
 <script src="{% static 'Leaflet.extra-markers/dist/js/leaflet.extra-markers.min.js' %}"></script>
 
 <!-- Load Esri Leaflet from CDN -->
-<script src="https://cdn.jsdelivr.net/leaflet.esri/1.0.0/esri-leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/leaflet.esri/1.0.4/esri-leaflet.js"></script>
 
 <!-- Not on NPM, https://github.com/makinacorpus/Leaflet.MeasureControl -->
 <script src="{% static 'leafletmeasurecontrol/leaflet.measurecontrol.js' %}"></script>
@@ -104,6 +98,18 @@
   var redirect_url = "{% url 'index' %}";
   var georeference_id = '{{ georeference.id }}';
   csrf = '{{ csrf_token }}';
+
+  {% if same_collector %}
+  var same_collector_points = $.parseJSON('{{ same_collector|safe }}');
+  {% else %}
+  var same_collector_points = false;
+  {% endif %}
+
+  {% if georeference.geographical_position %}
+  var geographical_position = new L.LatLng({{ georeference.geographical_position.point.coords.1 }}, {{ georeference.geographical_position.point.coords.0 }});
+  {% else %}
+  var geographical_position = false;
+  {% endif %}
 
   // Because disabled values do not submit, we have to remove all of the disableds from the select elements
   function enableSelects() {
