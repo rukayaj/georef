@@ -149,3 +149,34 @@ try:
     from georef.local_settings import *
 except ImportError:
     pass
+
+# Heroku compatibility
+import dj_database_url
+
+if os.getcwd() == "/app":
+    DATABASES = {'default': dj_database_url.config(default='postgres://localhost')}
+    DATABASES['default']['ENGINE'] = 'django.contrib.gis.db.backends.postgis'
+    # Static files (CSS, JavaScript, Images)
+    # https://docs.djangoproject.com/en/1.9/howto/static-files/
+
+    PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+    STATIC_ROOT = os.path.join(PROJECT_ROOT, 'staticfiles')
+    STATIC_URL = '/static/'
+
+    # Extra places for collectstatic to find static files.
+    STATICFILES_DIRS = (
+        os.path.join(os.path.dirname(PROJECT_ROOT), 'core', 'static'),
+    )
+
+    # Simplified static file serving.
+    # https://warehouse.python.org/project/whitenoise/
+
+    STATICFILES_STORAGE = 'whitenoise.django.GzipManifestStaticFilesStorage'
+
+    # GEOS etc
+    # https://github.com/cirlabs/heroku-buildpack-geodjango/
+    GEOS_LIBRARY_PATH = os.environ.get('GEOS_LIBRARY_PATH')
+    GDAL_LIBRARY_PATH = os.environ.get('GDAL_LIBRARY_PATH')
+
+    # Sendgrid settings for smtp
