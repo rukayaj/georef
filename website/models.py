@@ -502,6 +502,7 @@ class GeoReference(models.Model):
         if self.potential_geographical_positions:
             self.potential_geographical_positions = serialize('custom_geojson', self.potential_geographical_positions,
                                                               geometry_field='point')
+            self.potential_geographical_positions = self.potential_geographical_positions.replace("'", '')
 
     def geolocate(self, name, notes='', limit=2):
         # First try our own database:

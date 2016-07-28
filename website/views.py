@@ -250,29 +250,26 @@ class GeoReferenceUpdateView(UpdateView):
         context['origin_choices'] = models.GeographicalPosition.origin_choices
         context['geographical_position_form'] = forms.GeographicalPositionForm()
 
-        same_collector = get_same_collector_points(self.object)
+        same_collector = []
+        if self.object.locality_date and self.object.group_id:
+            date_upper = self.object.locality_date + relativedelta(months=+3)
+            date_lower = self.object.locality_date + relativedelta(months=-3)
+            same_collector_points = models.GeoReference.objects.filter(group_id=self.object.group_id,
+                                                                       locality_date__range=[date_lower, date_upper],
+                                                                       geographical_position__isnull=False)
+            for p in same_collector_points:
+                p.geographical_position.origin = models.GeographicalPosition.SAME_GROUP
+                p.geographical_position.notes = 'Visited by same collector on ' + formats.date_format(p.locality_date,
+                                                                                                      "SHORT_DATE_FORMAT")
+                same_collector.append(p.geographical_position)
         if same_collector:
             context['same_collector'] = serialize('custom_geojson', same_collector, geometry_field='point')
 
+        if not self.object.potential_geographical_positions:
+            self.object.auto_geolocate()
+            self.object.save()
+
         return context
-
-def get_same_collector_points(geo_reference):
-    # Ok now get all of the points which have been successfully geolocated with the same collector number in the same year
-    same_collector = []
-    if geo_reference.locality_date and geo_reference.group_id:
-        date_upper = geo_reference.locality_date + relativedelta(months=+3)
-        date_lower = geo_reference.locality_date + relativedelta(months=-3)
-        same_collector_points = models.GeoReference.objects.filter(group_id=geo_reference.group_id,
-                                                                   locality_date__range=[date_lower, date_upper],
-                                                                   geographical_position__isnull=False)
-        for p in same_collector_points:
-            p.geographical_position.origin = models.GeographicalPosition.SAME_GROUP
-            p.geographical_position.notes = 'Visited by same collector on ' + formats.date_format(p.locality_date,
-                                                                                                  "SHORT_DATE_FORMAT")
-            same_collector.append(p.geographical_position)
-    return same_collector
-
-
 
 
 def clean_locality(request, pk):
@@ -327,55 +324,46 @@ def set_geographical_position(request, pk):
 def process_bulk(request):
     # Load the data into pandas
     data = json.loads(request.POST['data'])
-    df = pd.DataFrame(data, columns=input_columns)
-
-    # We need to do something about these if they are 0
-    df.loc[df['day'] == 0, 'day'] = 1
-    df.loc[df['month'] == 0, 'month'] = 1
-    df['date'] = pd.to_datetime(pd.DataFrame({'year': df['year'],
-                                              'month': df['month'],
-                                              'day': df['day']})).dt.date
-    del df['day'], df['month'], df['year']
-
-    # Send it back to the template - this is what we used to do
-    # return render(request, 'website/process.html', {'data': df.to_json(orient='records')})
-
-    # Now we have to go through and see whether there are any localities with this particular locality string
-    def create_georeference(row):
+    for row in data:
         try:
-            locality_name = models.LocalityName.objects.get(locality_name=row['locality'])
+            locality_name = models.LocalityName.objects.get(locality_name=row[input_columns.index('locality')])
         except models.LocalityName.DoesNotExist:
-            locality_name = models.LocalityName(locality_name=row['locality'])
-            locality_name.save()
+            locality_name = models.LocalityName(locality_name=row[input_columns.index('locality')])
 
         # Create the new georeference
         georeference = models.GeoReference(locality_name=locality_name,
                                            user=request.user,
-                                           group_id=row['group'],
-                                           unique_id=row['unique_id'])
+                                           group_id=row[input_columns.index('group')],
+                                           unique_id=row[input_columns.index('unique_id')])
 
         # Now we need to create/check dates
-        if 'date' in row and row['date']:
-            georeference.locality_date = row['date']
+        try:
+            if row[input_columns.index('day')] == 0:
+                row[input_columns.index('day')] = 1
+            if row[input_columns.index('month')] == 0:
+                row[input_columns.index('month')] = 1
+            georeference.locality_date = datetime.date(day=row[input_columns.index('day')],
+                                                       month=row[input_columns.index('month')],
+                                                       year=row[input_columns.index('year')])
+        except:
+            pass
 
         # Now we need to store original_point in our locality name
-        if 'lat' in row and 'long' in row:
-            if row['lat'] and row['long']:
-                if row['lat'] > 0:
-                    row['lat'] = row['lat'] * -1
-                pos = models.GeographicalPosition(point=Point(row['long'], row['lat']),
+        if row[input_columns.index('lat')] and row[input_columns.index('long')]:
+            try:
+                if row[input_columns.index('lat')] > 0:
+                    row[input_columns.index('lat')] *= -1
+                pos = models.GeographicalPosition(point=Point(row[input_columns.index('long')], row[input_columns.index('lat')]),
                                                   origin=models.GeographicalPosition.INPUT)
-                if 'res' in row:
-                    if row['res'] in llres_mapping:
-                        pos.precision = llres_mapping[row['res']]
+                if row[input_columns.index('res')]:
+                    if row[input_columns.index('res')] in llres_mapping:
+                        pos.precision = llres_mapping[row[input_columns.index('res')]]
                 georeference.potential_geographical_positions = serialize('custom_geojson', [pos], geometry_field='point')
+            except ValueError:
+                print('problem with lat/long')
 
-        #georeference.auto_geolocate()
-        print('saving georeference')
-        # Save the georeference
+        # Everything's cool, let's save
+        locality_name.save()
         georeference.save()
-
-    # Run a function to create the georeference tasks
-    df.apply(create_georeference, axis=1)
 
     return redirect('index')

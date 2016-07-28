@@ -177,9 +177,12 @@ if os.getcwd() == "/app":
     # GEOS etc
     # https://github.com/cirlabs/heroku-buildpack-geodjango/
     GEOS_LIBRARY_PATH = os.environ.get('GEOS_LIBRARY_PATH')
-    GDAL_LIBRARY_PATH = os.environ.get('GDAL_LIBRARY_PATH')from os import environ
-	GEOS_LIBRARY_PATH = "{}/libgeos_c.so".format(environ.get('GEOS_LIBRARY_PATH'))
-	GDAL_LIBRARY_PATH = "{}/libgdal.so".format(environ.get('GDAL_LIBRARY_PATH'))
-	PROJ4_LIBRARY_PATH = "{}/libproj.so".format(environ.get('PROJ4_LIBRARY_PATH'))
+    GDAL_LIBRARY_PATH = os.environ.get('GDAL_LIBRARY_PATH')
+
+    from os import environ
+    GEOS_LIBRARY_PATH = "{}/libgeos_c.so".format(environ.get('GEOS_LIBRARY_PATH'))
+    GDAL_LIBRARY_PATH = "{}/libgdal.so".format(environ.get('GDAL_LIBRARY_PATH'))
+    PROJ4_LIBRARY_PATH = "{}/libproj.so".format(environ.get('PROJ4_LIBRARY_PATH'))
+
 
     # Sendgrid settings for smtp
