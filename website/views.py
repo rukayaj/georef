@@ -370,7 +370,7 @@ def process_bulk(request):
                         pos.precision = llres_mapping[row['res']]
                 georeference.potential_geographical_positions = serialize('custom_geojson', [pos], geometry_field='point')
 
-        georeference.auto_geolocate()
+        #georeference.auto_geolocate()
         print('saving georeference')
         # Save the georeference
         georeference.save()
