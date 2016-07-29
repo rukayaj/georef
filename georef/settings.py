@@ -161,18 +161,19 @@ if os.getcwd() == "/app":
 
     PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
-    STATIC_ROOT = os.path.join(PROJECT_ROOT, 'staticfiles')
+    #STATIC_ROOT = os.path.join(PROJECT_ROOT, 'staticfiles')
     STATIC_URL = '/static/'
+    STATIC_URL = '/app/website/static/'
 
     # Extra places for collectstatic to find static files.
-    STATICFILES_DIRS = (
-        os.path.join(os.path.dirname(PROJECT_ROOT), 'website', 'static'),
-    )
+    #STATICFILES_DIRS = (
+    #    os.path.join(os.path.dirname(PROJECT_ROOT), 'website', 'static'),
+    #)
 
     # Simplified static file serving.
     # https://warehouse.python.org/project/whitenoise/
 
-    STATICFILES_STORAGE = 'whitenoise.django.GzipManifestStaticFilesStorage'
+    #STATICFILES_STORAGE = 'whitenoise.django.GzipManifestStaticFilesStorage'
 
     # GEOS etc
     # https://github.com/cirlabs/heroku-buildpack-geodjango/
