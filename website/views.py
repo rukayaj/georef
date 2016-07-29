@@ -264,7 +264,7 @@ class GeoReferenceUpdateView(UpdateView):
                 same_collector.append(p.geographical_position)
         if same_collector:
             context['same_collector'] = serialize('custom_geojson', same_collector, geometry_field='point')
-        
+
         if not self.object.potential_geographical_positions:
             self.object.auto_geolocate()
             self.object.save()
