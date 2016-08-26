@@ -23,6 +23,22 @@ from django.utils import formats
 from django.db import connection
 
 
+class Profile(models.Model):
+    user = models.OneToOneField(User, null=True, blank=True, on_delete=models.CASCADE)
+    name = models.CharField(max_length=50)
+    is_database = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.name
+
+
+class FeatureType(models.Model):
+    type = models.CharField(max_length=50)
+
+    def __str__(self):
+        return self.type
+
+
 class GeographicalPosition(models.Model):
     # Geographical location that has either a point or a polygon
     point = models.PointField(null=True, blank=True)
@@ -30,65 +46,15 @@ class GeographicalPosition(models.Model):
     line = models.LineStringField(null=True, blank=True)
     altitude = models.IntegerField(null=True, blank=True)
 
-    # The type of location
-    TOWN = 'TO'
-    ROAD = 'RO'
-    MOUNTAIN = 'MO'
-    RAILWAY = 'RA'
-    FARM = 'FA'
-    PARK = 'PA'
-    BETWEEN = 'BE'
-    MEASURED = 'ME'
-    UNKNOWN = 'UN'
-    feature_type_choices = (
-        (TOWN, 'Town'),
-        (ROAD, 'Road'),
-        (MOUNTAIN, 'Mountain'),
-        (RAILWAY, 'Railway'),
-        (FARM, 'Farm'),
-        (PARK, 'Park'),
-        (MEASURED, 'Measurement from a place'),
-        (BETWEEN, 'Between two places'),
-        (UNKNOWN, 'Unknown')
-    )
-    feature_type = models.CharField(max_length=2, choices=feature_type_choices, default=UNKNOWN)
+    # The type or category of location
+    feature_type = models.ForeignKey(FeatureType, null=True, blank=True)
 
     # Determines the resolution this point has been georeferenced to
     # No I think it is right. Georeference 1 "Slangkop" or 2 "Snakehead" should both lead to the same point and the
     # buffer should be associated with that point, if you can georef it finer then do it and change buffer + lat/long
-    precision = models.IntegerField(null=True, blank=True)
+    precision_m = models.IntegerField(null=True, blank=True, default=1000)
 
-    # Origin of the point/polygon
-    USER = 'US'
-    GOOGLE = 'GO'
-    GAZETTEER = 'GA'
-    BRAHMS = 'BR'
-    GEOCODEFARM = 'GE'
-    NOMINATIM = 'NO'
-    INPUT = 'IN'
-    LOCALITY_STRING = 'LS'
-    RQIS = 'RQ'
-    ROADS = 'RO'
-    UNKNOWN = 'UN'
-    SABCA = 'SA'
-    SAME_GROUP = 'SG'
-    origin_choices = (
-        (USER, 'User'),
-        (GOOGLE, 'Google'),
-        (GAZETTEER, 'SANBI gazetteer'),
-        (BRAHMS, 'BRAHMS'),
-        (GEOCODEFARM, 'Geocode farm'),
-        (NOMINATIM, 'Nominatim'),
-        (INPUT, 'Input'),
-        (RQIS, 'South Africa 1:500 000 Rivers'),
-        (ROADS, 'Official list of roads'),
-        (UNKNOWN, 'Unknown'),
-        (LOCALITY_STRING, 'Derived from locality string'),
-        (SABCA, 'SABCA'),
-        (SAME_GROUP, 'SameGroup')
-    )
-    origin = models.CharField(max_length=2, choices=origin_choices, default=UNKNOWN)
-
+    # Any notes associated with this place
     notes = models.CharField(max_length=50, null=True, blank=True)
 
     def clean(self):
@@ -136,6 +102,9 @@ class LocalityName(models.Model):
         if len(self.locality_parts['split_localities']) == 1:
             self.locality_parts['split_localities'] = self.locality_parts['locality'].split(';')
 
+        self.locality_parts['split_localities'] = [self.clean_string(x) for x in self.locality_parts['split_localities']
+                                                   if self.clean_string(x) != '']
+
     def _get_lat_long_dms(self):
         south = False
         east = False
@@ -175,7 +144,7 @@ class LocalityName(models.Model):
         # See if it contains decimal degrees in the string itself
         regex = r'(-?[1-4]\d\.[0-9]+)\s*°?\s*s?[;\:,]?\s+(-?[1-4]\d\.[0-9]+)\s*°?\s*e?'
         match = re.search(regex, str(self.locality_parts['locality']))
-        #   import pdb; pdb.set_trace()
+
         if match:
             lat = float(match.group(1))
             long = float(match.group(2))
@@ -210,7 +179,7 @@ class LocalityName(models.Model):
             {'replace': 'the',
              'regex': [r'\s+die(?=\s+)']},
             {'replace': '',
-             'regex': [r'^collected\s+(from|in|on)?\s*', r'\s+along', r'\s+the(?=\s+)']}
+             'regex': [r'^collected\s+(from|in|on)?\s*', r'\s+along', r'\s+the(?=\s+)', 'lookout\s+over']}
         ]
 
         # Run a place through it
@@ -250,7 +219,7 @@ class LocalityName(models.Model):
                     self.locality_parts['province'] = item['replace']
 
     def clean_string(self, s):
-        # Excessive full stops
+        # Excessive punctuation
         s = re.sub(r'\s*\.\s*\.+\s*', '', s)
         s = re.sub(r'\s*,\s*,+\s*', '', s)
         s = re.sub(r'\s*:\s*:+\s*', '', s)
@@ -305,47 +274,57 @@ class LocalityName(models.Model):
                     # Break out of both loops, we've found the distance/measurements
                     break
 
+        # Sometimes we also have vague kind of "south of x" directions, in which case we want to remove the bearings...
+        # So use s as a variable to hold one or the other, swap back in afterwards
         if 'place_measured_from' in self.locality_parts:
-            # Look for bearings, keep track of the ones we need to remove and get rid of them afterwards
-            bearings_matches = {
-                'south': ['south', 's', 'se', 'sw', 'south-east', 'southeast', 'south-west', 'southwest'],
-                'north': ['north', 'n', 'ne', 'nw', 'north-east', 'northeast', 'north-west', 'northwest'],
-                'east': ['east', 'e', 'se', 'ne', 'south-east', 'southeast', 'north-east', 'northeast'],
-                'west': ['west', 'w', 'sw', 'nw', 'south-west', 'southwest', 'north-west', 'northwest']}
+            s = self.locality_parts['place_measured_from']
+        else:
+            s = self.locality_parts['locality']
 
-            self.locality_parts['bearings'] = []
-            strings_to_remove = set()  # apparently keeps unique values only
-            for bearing, match_list in bearings_matches.items():
-                for match in match_list:
-                    regex = '(^|\s+)(due\s+)?(' + match + ')\.?(\s|of|$)'
-                    match = re.search(regex, self.locality_parts['place_measured_from'])
-                    if match:
-                        self.locality_parts['bearings'].append(bearing)
-                        strings_to_remove.add(regex)
-                    '''temp = re.sub(regex, '', self.locality_parts['place_measured_from'])
-                    if temp is not self.locality_parts['place_measured_from']:
-                        self.locality_parts['bearings'].append(proper_name)
-                        strings_to_remove.add(regex)'''
-            if not self.locality_parts['bearings']:
-                del self.locality_parts['bearings']
+        # Look for bearings, keep track of the ones we need to remove and get rid of them afterwards
+        bearings_matches = {
+            'south': ['south', 's', 'se', 'sw', 'south-east', 'southeast', 'south-west', 'southwest'],
+            'north': ['north', 'n', 'ne', 'nw', 'north-east', 'northeast', 'north-west', 'northwest'],
+            'east': ['east', 'e', 'se', 'ne', 'south-east', 'southeast', 'north-east', 'northeast'],
+            'west': ['west', 'w', 'sw', 'nw', 'south-west', 'southwest', 'north-west', 'northwest']}
 
-            # Remove all of the applicable bearings
-            for regex in strings_to_remove:
-                self.locality_parts['place_measured_from'] = re.sub(regex, '',
-                                                                    self.locality_parts['place_measured_from'])
+        self.locality_parts['bearings'] = []
+        strings_to_remove = set()  # apparently keeps unique values only
+        for bearing, match_list in bearings_matches.items():
+            for match in match_list:
+                regex = '(^|\s+)(due\s+)?(' + match + ')\.?(\s|of|$)'
+                match = re.search(regex, s)
+                if match:
+                    self.locality_parts['bearings'].append(bearing)
+                    strings_to_remove.add(regex)
+                '''temp = re.sub(regex, '', self.locality_parts['place_measured_from'])
+                if temp is not self.locality_parts['place_measured_from']:
+                    self.locality_parts['bearings'].append(proper_name)
+                    strings_to_remove.add(regex)'''
+        if not self.locality_parts['bearings']:
+            del self.locality_parts['bearings']
 
-            # Now we might have 6km from cape town NE towards Worcester
-            from_regex = r'(^|\s+)(of|fro?m|van)'
-            regex = from_regex + r'(.+?)\s+(to|towards?|na)\s+(.+)$'
-            match = re.search(regex, self.locality_parts['place_measured_from'])
-            if match:
-                self.locality_parts['place_measured_from'] = match.group(3)
-                self.locality_parts['place_measured_towards'] = match.group(5)
+        # Remove all of the applicable bearings
+        for regex in strings_to_remove:
+            s = re.sub(regex, '', s)
 
-            # We might also have just worcestor, 6km NE from cape town
-            regex = r'\s+(of|fro?m|van)\s+'
-            self.locality_parts['place_measured_from'] = re.sub(from_regex, '',
-                                                                self.locality_parts['place_measured_from'])
+        # Now we might have 6km from cape town NE towards Worcester
+        from_regex = r'(^|\s+)(of|fro?m|van)'
+        regex = from_regex + r'(.+?)\s+(to|towards?|na)\s+(.+)$'
+        match = re.search(regex, s)
+        if match:
+            s = match.group(3)
+            self.locality_parts['place_measured_towards'] = match.group(5)
+
+        # We might also have just worcestor, 6km NE from cape town
+        regex = r'\s+(of|fro?m|van)\s+'
+        s = re.sub(from_regex, '', s)
+
+        # Swap s back in
+        if 'place_measured_from' in self.locality_parts:
+            self.locality_parts['place_measured_from'] = s
+        else:
+            self.locality_parts['locality'] = s
 
     def _get_road(self):
         " on x road (to)?/ along x road/ on side of x road/ near x road"
@@ -378,7 +357,7 @@ class LocalityName(models.Model):
         # Standardise feature names
         feature_types = [
             {'replace': 'farm',
-             'regex': [r'\s+plaas\s+', r'[\w\s]+?\s*[oi]n\s+(the\s+)?farm\s*']},
+             'regex': [r'\s+plaas\s+', r'(^|[\s,.])[oi]n\s+(the\s+)?farm\s*']},
             {'replace': 'forest',
              'regex': [r'\s+for\.']},
             {'replace': 'nature reserve',
@@ -407,78 +386,98 @@ class LocalityName(models.Model):
             #re.search(item['replace'], self.locality_parts['locality'])
 
         # Remove "in the / on the" for farms
-        self.locality_parts['locality'] = re.sub(r'[\w\s]+?\s*[OoIi]n\s+(the\s+)?[Ff]arm\s*', 'Farm',
-                                                 self.locality_parts['locality'])
 
         # Farm x, blah blah blah (we don't need the blah blah blah bit, so remove it and strip out the "Farm"
-        temp = re.sub(r'^\s*Farm\s*(.+?),.+', "\g<1>", self.locality_parts['locality'])
+        temp = re.sub(r'^\s*Farm\s*(.+?)[,.].+', "\g<1>", self.locality_parts['locality'])
+
         if temp is not self.locality_parts['locality']:
-            self.locality_parts['feature_type'] = GeographicalPosition.FARM
+            self.locality_parts['feature_type'] = 'farm'
             self.locality_parts['locality'] = temp
 
         # If this string contains three digits it's very likely to be a farm number
         # Alternate regex ^(([A-Za-z\-]+\s*?){1,4}),?\s?[\(\[\{]?(\d{3})[^\.].*$
         results = re.search('\s*[\[\{\(]?\s*(\d\d\d)\s*[\]\}\)]?\s*', self.locality_parts['locality'])
         if results and results.group(1):
+            # Remove from locality string
             self.locality_parts['locality'] = self.locality_parts['locality'].replace(results.group(0), '')
-            self.locality_parts['farm_number'] = results.group(1)
-            self.locality_parts['feature_type'] = GeographicalPosition.FARM
 
-        # If anything has changed in the locality string after this then it is a farm
-        if temp != self.locality_parts['locality']:
-            self.locality_parts['feature_type'] = GeographicalPosition.FARM
+            # Add farm number
+            self.locality_parts['farm_number'] = results.group(1)
+
+            # Set as farm
+            self.locality_parts['feature_type'] = 'farm'
 
 
 @receiver(post_init, sender=LocalityName)
 def post_init(sender, instance, **kwargs):
-    instance.clean_locality()
+    if instance.pk is None:
+        instance.clean_locality()
 
 
 class GeoReference(models.Model):
     locality_name = models.ForeignKey(LocalityName)
     geographical_position = models.ForeignKey(GeographicalPosition, null=True, blank=True)
-    user = models.ForeignKey(User, null=True, blank=True)
-    group_id = models.CharField(max_length=50)
-    unique_id = models.CharField(max_length=50)
+    author = models.ForeignKey(Profile)
+    group_id = models.CharField(max_length=50, null=True, blank=True)
+    unique_id = models.CharField(max_length=50, null=True, blank=True)
     locality_date = models.DateField(null=True, blank=True)
     created_on = models.DateTimeField(auto_now_add=True)
-    notes = models.TextField(max_length=50)
+    notes = models.TextField(max_length=50, null=True, blank=True)
 
-    # Potential locations - this is just a load of geojson
-    potential_geographical_positions = JSONField(null=True, blank=True)
+    # Potential georeferences, these should only be ones where geographical_position is filled in
+    potential_georeferences = models.ManyToManyField('self')
+
+    def __str__(self):
+        return str(self.locality_name) + ' by ' + str(self.author)
 
     def get_absolute_url(self):
         return reverse('georeference', args=[self.id])
 
-    def auto_geolocate(self):
-        # Initialize as a blank list if we don't start with any potential geographical positions
-        if not self.potential_geographical_positions:
-            self.potential_geographical_positions = []
+    def get_serialized_geolocations(self):
+        gps = self.potential_georeferences.get_queryset().select_related('geographical_position')
+        return serialize('custom_geojson', gps, geometry_field='point')
+
+    def add_potential_georeference(self, lat, long, profile_name, locality_name=False):
+        # Geographical position
+        point = Point(long, lat)
+        gp, created = GeographicalPosition.objects.get_or_create(point=point)
+
+        # Author profile
+        profile = Profile.objects.get(name=profile_name)
+
+        # Locality name
+        if not locality_name:
+            ln = self.locality_name
         else:
-            ps = self.potential_geographical_positions
-            self.potential_geographical_positions = []
-            for gl in GeoJSONDeserializer(stream_or_string=ps,
-                                          model_name='website.GeographicalPosition',
-                                          geometry_field='point'):
-                # Add any pre-existing geographical positions which are 'input' types i.e. came in bulk form or were manually added
-                if gl.object.origin == dict(GeographicalPosition.origin_choices).get(GeographicalPosition.INPUT):
-                    self.potential_geographical_positions.append(gl.object)
+            ln, created = LocalityName.objects.get_or_create(locality_name=locality_name)
+
+        # Georeference
+        gr, created = GeoReference.objects.get_or_create(geographical_position=gp,
+                                                         locality_name=ln,
+                                                         author=profile)
+
+        # Add it to list
+        if gr not in self.potential_georeferences.values():
+            self.potential_georeferences.add(gr)
+
+    def auto_geolocate(self):
+        # Reset
+        self.potential_georeferences.remove()
+        self.potential_georeferences.clear()
 
         # Sometimes during the locality cleaning process we will have uncovered a lat/long if so add that
         if 'lat' in self.locality_name.locality_parts and 'long' in self.locality_name.locality_parts:
-            self.potential_geographical_positions.append(
-                GeographicalPosition(point=Point(self.locality_name.locality_parts['long'],
-                                                 self.locality_name.locality_parts['lat']),
-                                     origin=GeographicalPosition.LOCALITY_STRING,
-                                     notes='Taken from lat/long in locality string'))
+            self.add_potential_georeference(long=self.locality_name.locality_parts['long'],
+                                            lat=self.locality_name.locality_parts['lat'],
+                                            profile_name='User input')
 
         # First, try and geolocate the unedited string
         self.geolocate(self.locality_name.locality_name, limit=5)
 
-        # Geolocate the locality + province for the locality strings, automatically saving it to our potential_geographical_positions
+        # Geolocate the locality + province, automatically saving it to our potential_geographical_positions
         if 'province' in self.locality_name.locality_parts:
             for s in self.locality_name.locality_parts['split_localities']:
-                self.geolocate(s + ', ' + self.locality_name.locality_parts['province'], limit=1)
+                self.geolocate(s + ', ' + self.locality_name.locality_parts['province'], limit=3)
         else:
             for s in self.locality_name.locality_parts['split_localities']:
                 self.geolocate(s, limit=1)
@@ -496,39 +495,18 @@ class GeoReference(models.Model):
             if 'place_measured_towards' in self.locality_name.locality_parts:
                 self.geolocate(self.locality_name.locality_parts['place_measured_towards'], notes='(MEASURED TOWARDS)')
 
-        # If we have multiple results with the same (roughly) point, discard them
-
-        # If we've managed to uncover anything then return it
-        if self.potential_geographical_positions:
-            self.potential_geographical_positions = serialize('custom_geojson', self.potential_geographical_positions,
-                                                              geometry_field='point')
-            self.potential_geographical_positions = self.potential_geographical_positions.replace("'", '')
-
     def geolocate(self, name, notes='', limit=2):
         # First try our own database:
-        geos = list(self._geolocate_database(name, limit=limit))
+        georefs = list(self._geolocate_database(name, limit=limit))
+        for gr in georefs:
+            if gr not in self.potential_georeferences.values():
+                self.potential_georeferences.add(gr)
 
-        # Then try google
-        google_point = self._geolocate_google(name, append=False)
-        if google_point:
-            geos.append(google_point)
+        # Then try external ones
+        self._geolocate_google(name)
+        self._geolocate_nominatim(name + ', South Africa')
 
-        # Then nominatim
-        nominatim_point = self._geolocate_nominatim(name + ', South Africa', append=False)
-        if nominatim_point:
-            geos.append(nominatim_point)
-
-        # At this point we need to add whatever notes and append all of these to our potential_geo_locations
-        for g in geos:
-            if notes:
-                if g.notes:
-                    g.notes += ' | ' + notes
-                else:
-                    g.notes = notes
-
-            self.potential_geographical_positions.append(g)
-
-        return len(geos)
+        return len(georefs)
 
     def _geolocate_database(self, name, limit):
         # See if it's contained within something
@@ -598,27 +576,19 @@ class GeoReference(models.Model):
         # Get the goereference objects and add any notes
         georefs = GeoReference.objects.filter(locality_name__in=matches).exclude(geographical_position__isnull=True).\
             distinct('locality_name', 'geographical_position')
-        geos = []
-        for m in georefs:
-            m.geographical_position.notes = m.locality_name.locality_parts['locality'].title()
-            geos.append(m.geographical_position)
+        #import pdb; pdb.set_trace()
+        return georefs
 
-        return geos
-
-    def _geolocate_nominatim(self, string, append=True):
+    def _geolocate_nominatim(self, string):
         g = Nominatim(timeout=30)
-        try:
-            results = g.geocode(query=string, exactly_one=True)
-            if results and results[0]:
-                gp = GeographicalPosition(point=Point(results.longitude, results.latitude), origin=GeographicalPosition.NOMINATIM)
-                gp.notes = string
-                if append:
-                    self.potential_geographical_positions.append(gp)
-                return gp
-        except:
-            print("Nominatim - error: " + str(sys.exc_info()))
+        results = g.geocode(query=string, exactly_one=True)
+        if results and results[0]:
+            self.add_potential_georeference(long=results.longitude,
+                                            lat=results.latitude,
+                                            profile_name='OpenStreetMap',
+                                            locality_name=results.address)
 
-    def _geolocate_google(self, string, append=True):
+    def _geolocate_google(self, string):
         g = GoogleV3()
         try:
             results = g.geocode(string, region='za')
@@ -630,16 +600,16 @@ class GeoReference(models.Model):
                     country = address_component['short_name']
 
             if country == 'ZA':
+                # Get geographical position
                 coords = results.raw['geometry']['location']
-                gp = GeographicalPosition(point=Point(coords['lng'], coords['lat']), origin=GeographicalPosition.GOOGLE)
-                if 'short_name' in results.raw['address_components'][0]:
-                    gp.notes = results.raw['address_components'][0]['short_name']
-                if append:
-                    self.potential_geographical_positions.append(gp)
-                return gp
+                ac = results.raw['address_components'][0]
+                self.add_potential_georeference(long=coords['lng'],
+                                                lat=coords['lat'],
+                                                profile_name='Google',
+                                                locality_name=ac['short_name'])
+
         except AttributeError as e:
             print("Google - not found: " + string + ' gives error : ' + str(sys.exc_info()))
             return False
-        except:
-            print("Google - error: " + str(sys.exc_info()))
-            return False
+
+

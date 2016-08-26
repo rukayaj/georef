@@ -1,0 +1,15 @@
+{% extends "website/_base.html" %}
+{% load static %}
+{% load bootstrap3 %}
+
+{% block content %}
+<h1>Add georeferencing task</h1>
+<form action="{% url 'add_single' %}" method="post" role="form" class="form">{% csrf_token %}
+  {% bootstrap_form form layout='inline' %}
+  {% buttons %}
+    <button type="submit" class="btn btn-primary">
+      {% bootstrap_icon "floppy-disk" %} Add
+    </button>
+  {% endbuttons %}
+</form>
+{% endblock content %}

@@ -26,14 +26,15 @@ urlpatterns = [
     url(r'^completed/$', views.completed, name='completed'),
     url(r'^qc/$', views.qc, name='qc'),
     url(r'^add/bulk/', views.add_bulk, name='add_bulk'),
+    url(r'^add/single/', views.add_single, name='add_single'),
     url(r'^georeference/(?P<pk>[0-9]+)/$', views.GeoReferenceUpdateView.as_view(), name='georeference'),
-    url(r'^georeference/(?P<pk>[0-9]+)/auto_geolocate/', views.auto_geolocate, name='auto_geolocate'),
+    url(r'^georeference/(?P<pk>[0-9]+)/auto_geolocate/$', views.auto_geolocate, name='auto_geolocate'),
 
     url(r'^process_bulk', views.process_bulk, name='process_bulk'),
     url(r'^completed/download$', views.download_completed, name='download_completed'),
-    url(r'^set-geographical-position/(?P<pk>[0-9]+)/', views.set_geographical_position, name='set_geographical_position'),
+    url(r'^set-geographical-position/(?P<pk>[0-9]+)/(?P<gr_pk>[0-9]+)?', views.set_geographical_position, name='set_geographical_position'),
 
-    url(r'^delete/(?P<pk>[0-9]+)/$', DeleteGeoreference.as_view(), name='delete'),
+    url(r'^georeference/(?P<pk>[0-9]+)/delete/$', DeleteGeoreference.as_view(), name='delete_georeference'),
 
     # Just for debugging
     url(r'^georeference/(?P<pk>[0-9]+)/clean_locality/', views.clean_locality, name='clean_locality'),

@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="{% static 'leaflet-measure/dist/leaflet-measure.css' %}">
 <link rel="stylesheet" href="{% static 'leafletmeasurecontrol/leaflet.measurecontrol.css' %}">
 <link rel="stylesheet" href="{% static 'Leaflet.extra-markers/dist/css/leaflet.extra-markers.min.css' %}">
+<link rel="stylesheet" href="{% static 'datatables.net-bs/css/dataTables.bootstrap.css' %}">
 {% endblock css %}
 
 {% block heading %}
@@ -63,6 +64,17 @@
         </button>
     {% endbuttons %}
 </form>
+<hr><h3>Potential georeferences</h3>
+<table id="places" class="table">
+  <thead><tr>
+    <th>Name</th>
+    <th>From</th>
+    <th>&nbsp;</th>
+  </tr></thead>
+  <tbody>
+
+  </tbody>
+</table>
 
 <form style="display: none;" class="template-form" method="post" action="{% url 'set_geographical_position' georeference.id %}">{% csrf_token %}
     <h3><span class="form-heading">Map marker</span> <small class="form-coords"></small></h3>
@@ -75,11 +87,38 @@
       {% endif %}
     {% endfor %}
     {% buttons %}
-        <button type="submit" class="btn btn-warning submit-georeference" onClick="enableSelects();">
-            {% bootstrap_icon "ok" %} Set as georeferenced point
+        <button type="submit" class="btn btn-success submit-georeference" onClick="enableSelects();">
+            {% bootstrap_icon "ok" %} Set
         </button>
+        <button type="button" class="btn btn-danger delete-prompt" data-url="{% url 'delete_georeference' 0 %}"
+                  data-toggle="modal" data-target="#deleteModal" role="button">Delete
+        <span class="glyphicon glyphicon-trash" aria-hidden="true"></span></button>
     {% endbuttons %}
 </form>
+
+<!-- Modal for deleting -->
+<div class="modal fade" id="deleteModal" tabindex="-1" role="dialog" aria-labelledby="deleteModalLabel">
+  <div class="modal-dialog" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h4 class="modal-title" id="myModalLabel">Delete georeference</h4>
+      </div>
+      <div class="modal-body">
+        <div id="deleteModalPrompt">Are you sure?</div>
+        <div id="deleteModalSuccess" class="success" style="display: none">
+          Successfully deleted.
+          <button href="" type="button" class="btn btn-success" onClick="window.location.reload();">Continue
+            <span class="glyphicon glyphicon-arrow-right" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="delete">Delete <span class="glyphicon glyphicon-trash" aria-hidden="true"></span></button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock content %}
 
 {% block js %}
@@ -87,6 +126,9 @@
 <script src="{% static 'leaflet-draw/dist/leaflet.draw.js' %}"></script>
 <script src="{% static 'leaflet-measure/dist/leaflet-measure.min.js' %}"></script>
 <script src="{% static 'Leaflet.extra-markers/dist/js/leaflet.extra-markers.min.js' %}"></script>
+<script src="https://rawgit.com/kartena/Leaflet.EditableHandlers/master/src/L.CircleEditor.js"></script>
+<script src="{% static 'datatables.net/js/jquery.dataTables.js' %}"></script>
+<script src="{% static 'datatables.net-bs/js/dataTables.bootstrap.js' %}"></script>
 
 <!-- Load Esri Leaflet from CDN -->
 <script src="https://cdn.jsdelivr.net/leaflet.esri/1.0.4/esri-leaflet.js"></script>
@@ -94,10 +136,10 @@
 <!-- Not on NPM, https://github.com/makinacorpus/Leaflet.MeasureControl -->
 <script src="{% static 'leafletmeasurecontrol/leaflet.measurecontrol.js' %}"></script>
 <script>
-  var potential_geographical_positions = $.parseJSON('{{ georeference.potential_geographical_positions|safe }}');
-  var redirect_url = "{% url 'index' %}";
-  var georeference_id = '{{ georeference.id }}';
-  csrf = '{{ csrf_token }}';
+  var potential_geographical_positions = $.parseJSON('{{ potential_geographical_positions|safe }}');
+  // var redirect_url = "{% url 'index' %}";
+  // var georeference_id = '{{ georeference.id }}';
+  // csrf = '{{ csrf_token }}';
 
   {% if same_collector %}
   var same_collector_points = $.parseJSON('{{ same_collector|safe }}');
@@ -106,7 +148,10 @@
   {% endif %}
 
   {% if georeference.geographical_position %}
-  var geographical_position = new L.LatLng({{ georeference.geographical_position.point.coords.1 }}, {{ georeference.geographical_position.point.coords.0 }});
+  var geographical_position = $.parseJSON('{{ geographical_position|safe }}');
+  var geographical_position_precision_m = {{ georeference.geographical_position.precision_m }};
+  var author = '{{ georeference.author }}';
+  var locality_name = '{{ georeference.locality_name }}';
   {% else %}
   var geographical_position = false;
   {% endif %}
@@ -115,6 +160,27 @@
   function enableSelects() {
     $('select').attr('disabled', false);
   }
+
+   // Make the delete modal work
+   $('#deleteModal').on('show.bs.modal', function (event) {
+      var button = $(event.relatedTarget); // Button that triggered the modal
+      var ajax_url = button.data('url');
+
+      $('#delete').click(function() {
+        // If they click delete then make the ajax call
+        $.ajax({
+          url: ajax_url,
+          method: "POST",
+          data: { 'csrfmiddlewaretoken': '{{ csrf_token }}' },
+          dataType: "json"
+        }).done(function() {
+          $('#deleteModalPrompt').hide();
+          $('#deleteModalSuccess').show();
+          $('.modal-footer').hide();
+        });
+      });
+    });
+
 </script>
 <script src="{% static 'leaflet-icons.js' %}"></script>
 <script src="{% static 'georeference.js' %}"></script>

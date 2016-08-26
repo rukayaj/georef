@@ -28,7 +28,7 @@
         <a class="btn btn-info georeference" href="{% url 'georeference' georeference.id %}" role="button">
         Georeference<span class="glyphicon glyphicon-globe" aria-hidden="true"></span></a>
         {% endblock %}
-        <button class="btn btn-danger delete-prompt" data-url="{% url 'delete' georeference.id %}"
+        <button class="btn btn-danger delete-prompt" data-url="{% url 'delete_georeference' georeference.id %}"
                   data-title="{{ georeference.locality_name }}"  data-toggle="modal" data-target="#deleteModal" role="button">Delete
         <span class="glyphicon glyphicon-trash" aria-hidden="true"></span></button>
       </td>
