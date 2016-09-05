@@ -23,10 +23,6 @@ class Serializer(GeoJSONSerializer):
 
     # http://stackoverflow.com/questions/5453237/override-django-object-serializer-to-get-rid-of-specified-model
     def end_object(self, obj):
-        try:
-            print(obj.geographical_position.precision_m)
-        except:
-            import pdb; pdb.set_trace()
         # We need to retrieve the locality_name and author
         additions = {'locality_name': str(obj.locality_name).replace("'", '').replace('"', ''),
                      'author': str(obj.author).replace("'", '').replace('"', ''),

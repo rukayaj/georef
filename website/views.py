@@ -363,9 +363,20 @@ def set_geographical_position(request, pk, gr_pk=False):
         # Get the georeference that is being worked on
         georeference = models.GeoReference.objects.get(pk=pk)
 
+        # Create the input geographical position from the post data
+        geographical_position = forms.GeographicalPositionForm(request.POST)
+
+        # If what the user has chosen is pre-existing in db then just copy it along
         if gr_pk:
             chosen_georeference = models.GeoReference.objects.get(pk=gr_pk)
             georeference.geographical_position = chosen_georeference.geographical_position
+
+            # We need to update the precision for this geographical position
+            geographical_position.is_valid()
+            georeference.geographical_position.precision_m = geographical_position.cleaned_data['precision_m']
+            georeference.geographical_position.save()
+
+            # Update created date for georeference
             georeference.created_on = datetime.datetime.now()
             georeference.save()
         else:
@@ -382,7 +393,6 @@ def set_geographical_position(request, pk, gr_pk=False):
             # After that bit of insanity we can get back to the normal world
             if geographical_position.is_valid():
                 geographical_position = geographical_position.save()
-
                 # Add it to our georeference and save
                 georeference.geographical_position = geographical_position
                 georeference.created_on = datetime.datetime.now()

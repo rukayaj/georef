@@ -131,6 +131,7 @@ $(document).ready(function() {
       layer.g_locality_name = 'User';
       var form = getFormForPopup(layer);
       layer._popup.setContent(form.prop('outerHTML'));
+      console.log($(form).find('#id_point').val());
     }
   });
 
@@ -172,17 +173,22 @@ $(document).ready(function() {
     coords = getLayerCoords(layer);
     if(coords) {
       $(form).find('.form-coords').text(coords.lat.toFixed(5) + ', ' + coords.lng.toFixed(5));
-    }
-    if(typeof layer.feature != 'undefined') {
-      if(layer.feature.geometry.type == 'Polygon') {
-        $(form).find('#id_point').val('SRID=4326;POLYGON (' + coords.lng + ' ' + coords.lat + ')');
-      }
-      else {
-        $(form).find('#id_point').val('SRID=4326;POINT (' + coords.lng + ' ' + coords.lat + ')');
-      }
 
       // Add georef pk to post if possible
-      $(form).attr('action', (form).attr('action') + layer.feature.properties.pk)
+      $(form).attr('action', (form).attr('action') + layer._leaflet_id)
+
+      if(typeof layer.feature != 'undefined') {
+        if(layer.feature.geometry.type == 'Polygon') {
+          var polygon = 'SRID=4326;POLYGON (' + coords.lng + ' ' + coords.lat + ')';
+          $(form).find('#id_point').val(polygon);
+          $(form).find('#id_point').attr('value', polygon);
+        }
+      }
+      else {
+        var point = 'SRID=4326;POINT (' + coords.lng + ' ' + coords.lat + ')';
+        $(form).find('#id_point').val(point);
+        $(form).find('#id_point').attr('value', point);
+      }
     }
 
     // Add precision
@@ -267,6 +273,7 @@ $(document).ready(function() {
       // Add buffer to map as circle
       circle = new L.CircleEditor(layer.getLatLng(), layer.precision_m);
       circle.addTo(map);
+      circle.bringToFront();
 
       // When editing circle, update the form precision_m + the layer precision_m property
       circle.on('edit', function(){
