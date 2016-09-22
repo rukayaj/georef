@@ -441,11 +441,19 @@ def process_bulk(request):
             try:
                 if row[input_columns.index('lat')] > 0:
                     row[input_columns.index('lat')] *= -1
-                pos = models.GeographicalPosition(point=Point(row[input_columns.index('long')], row[input_columns.index('lat')]))
+                long = row[input_columns.index('long')]
+                lat = row[input_columns.index('lat')]
+                precision_m = False
                 if row[input_columns.index('res')]:
                     if row[input_columns.index('res')] in llres_mapping:
-                        pos.precision_m = llres_mapping[row[input_columns.index('res')]]
-                georeference.potential_geographical_positions = serialize('custom_geojson', [pos], geometry_field='point')
+                        precision_m = llres_mapping[row[input_columns.index('res')]]
+                if precision_m:
+                    georeference.add_potential_georeference(lat=lat, long=long,
+                                                            profile_name=request.user.profile.name,
+                                                            precision_m=precision_m)
+                else:
+                    georeference.add_potential_georeference(lat=lat, long=long,
+                                                            profile_name=request.user.profile.name)
             except ValueError:
                 print('problem with lat/long')
 

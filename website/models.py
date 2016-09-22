@@ -437,10 +437,14 @@ class GeoReference(models.Model):
         gps = self.potential_georeferences.get_queryset().select_related('geographical_position')
         return serialize('custom_geojson', gps, geometry_field='point')
 
-    def add_potential_georeference(self, lat, long, profile_name, locality_name=False):
+    def add_potential_georeference(self, lat, long, profile_name, locality_name=False, precision_m=False):
         # Geographical position
         point = Point(long, lat)
         gp, created = GeographicalPosition.objects.get_or_create(point=point)
+
+        # Precision
+        if precision_m:
+            gp.precision_m = precision_m
 
         # Author profile
         profile = Profile.objects.get(name=profile_name)
