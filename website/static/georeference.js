@@ -31,11 +31,11 @@ $(document).ready(function() {
     // Create a geojson layer, see https://www.dartdocs.org/documentation/leaflet/0.0.1-alpha.4/leaflet.layer/GeoJSON/addData.html
     collectorLayer = L.geoJson(same_collector_points, {
       pointToLayer: function(feature, latlng) { // Change marker according to input type
-          marker = SameGroupMarker;
+          // Note this marker is declared at the bottom of leaflet-icons.js
           return L.marker(latlng, {icon: SameGroupMarker});
       },
       onEachFeature: function (feature, layer) {
-        popupContent = feature.properties.notes;
+        popupContent = '<p>Visited by same collector on ' + feature.properties.locality_date + '</p>';
         // Bind the layer with the form
         layer.bindPopup(popupContent);
       }

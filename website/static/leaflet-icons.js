@@ -63,3 +63,8 @@ var GeoreferencedMarker = new L.ExtraMarkers.icon({
   markerColor: 'green-light',
   shape: 'star',
 });
+var SameGroupMarker = new L.ExtraMarkers.icon({
+  icon: 'glyphicon glyphicon-glass',
+  markerColor: 'yellow',
+  shape: 'star',
+});

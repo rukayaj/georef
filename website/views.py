@@ -320,10 +320,11 @@ class GeoReferenceUpdateView(UpdateView):
                                                                        locality_date__range=[date_lower, date_upper],
                                                                        geographical_position__isnull=False)
             for p in same_collector_points:
-                p.geographical_position.origin = models.GeographicalPosition.SAME_GROUP
+                # p.geographical_position.origin = models.GeographicalPosition.SAME_GROUP
                 p.geographical_position.notes = 'Visited by same collector on ' + formats.date_format(p.locality_date,
                                                                                                       "SHORT_DATE_FORMAT")
-                same_collector.append(p.geographical_position)
+                # same_collector.append(p.geographical_position)
+                same_collector.append(p)
         if same_collector:
             context['same_collector'] = serialize('custom_geojson', same_collector, geometry_field='point')
 
