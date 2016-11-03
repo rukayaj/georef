@@ -367,7 +367,7 @@ def set_geographical_position(request, pk, gr_pk=False):
         # Create the input geographical position from the post data
         geographical_position = forms.GeographicalPositionForm(request.POST)
 
-        # If what the user has chosen is pre-existing in db then just copy it along
+        # If the georeference/geographical position combo the user has chosen is pre-existing in db then just copy it
         if gr_pk:
             chosen_georeference = models.GeoReference.objects.get(pk=gr_pk)
             georeference.geographical_position = chosen_georeference.geographical_position
@@ -383,7 +383,7 @@ def set_geographical_position(request, pk, gr_pk=False):
         else:
             # Create the input geographical position from the post data
             geographical_position = forms.GeographicalPositionForm(request.POST)
-
+            
             # Call is_valid first time and it gives an attribute error, the second time it returns true/false
             # Wtf. So I am just adding a try/except in here to call it once and ignore it
             try:

@@ -129,7 +129,7 @@ $(document).ready(function() {
       layer.precision_m = 1000;
       layer.g_author = 'User';
       layer.g_locality_name = 'User';
-      var form = getFormForPopup(layer);
+      var form = getFormForPopup(layer, true);
       layer._popup.setContent(form.prop('outerHTML'));
       console.log($(form).find('#id_point').val());
     }
@@ -153,7 +153,7 @@ $(document).ready(function() {
     return false;
   }
 
-  function getFormForPopup(layer) {
+  function getFormForPopup(layer, isNew=false) {
     // Default
     popupContent = 'No information available.';
 
@@ -175,7 +175,9 @@ $(document).ready(function() {
       $(form).find('.form-coords').text(coords.lat.toFixed(5) + ', ' + coords.lng.toFixed(5));
 
       // Add georef pk to post if possible
-      $(form).attr('action', (form).attr('action') + layer._leaflet_id)
+      if(!isNew) {
+        $(form).attr('action', (form).attr('action') + layer._leaflet_id)
+      }
 
       if(typeof layer.feature != 'undefined') {
         if(layer.feature.geometry.type == 'Polygon') {
@@ -231,6 +233,9 @@ $(document).ready(function() {
           item = '<tr><td>' + feature.properties.locality_name + '</td><td>' + feature.properties.author +
           '</td><td><button class="btn btn-default pan-button" data-leaflet-id="' + feature.properties.pk + '">Pan</button></td></tr>';
           $('#places > tbody:last-child').append(item);
+
+
+      console.log($(form).find('#id_point').val());
       }
     }
   });
